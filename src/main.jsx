@@ -604,19 +604,34 @@ function InputAdapter() {
       const result = await response.json();
       const message = flowiseResponseText(result);
       const originalReportUrl = approvedReportUrl(message);
-      const reportUrl = originalReportUrl
-        ? enrichApprovedReportUrl(originalReportUrl, {
-            source_name: prepared?.sourceName || "Not supplied",
-            source_type: prepared?.sourceType || "Not supplied",
-            source_reference:
-              prepared?.sourceReference || prepared?.sourceName || "Not supplied",
-            report_approval_status: "APPROVED",
-            report_approval_feedback:
-              feedback ||
-              "Approved after human review of the draft report and cited evidence.",
-            report_approved_at: new Date().toISOString(),
-          })
-        : null;
+
+      const approvalStatusByDecision = Object.freeze({
+        proceed: "APPROVED",
+        reject: "REJECTED",
+      });
+
+      const reportApprovalStatus = approvalStatusByDecision[type];
+
+      if (!reportApprovalStatus) {
+        throw new Error("Unsupported human decision type");
+      }
+
+      const reportUrl =
+        type === "proceed" && originalReportUrl
+          ? enrichApprovedReportUrl(originalReportUrl, {
+              source_name: prepared?.sourceName || "Not supplied",
+              source_type: prepared?.sourceType || "Not supplied",
+              source_reference:
+                prepared?.sourceReference ||
+                prepared?.sourceName ||
+                "Not supplied",
+              report_approval_status: reportApprovalStatus,
+              report_approval_feedback:
+                feedback ||
+                "Approved after human review of the draft report and cited evidence.",
+              report_approved_at: new Date().toISOString(),
+            })
+          : null;
 
       setAnalysisResult({
         message: cleanFlowiseMessage(message, originalReportUrl),
