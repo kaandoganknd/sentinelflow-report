@@ -1,0 +1,2 @@
+Jul  1 09:14:43 combo sshd(pam_unix)[22099]: session opened for user test by (uid=509)
+Jul  1 09:14:44 combo sshd(pam_unix)[22099]: session closed for user test

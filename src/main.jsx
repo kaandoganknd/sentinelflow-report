@@ -32,6 +32,12 @@ const SAMPLE_REPORT = {
   limitations: ["Demonstration payload only."],
   validation_status: "PASS",
   supervisor_status: "APPROVED",
+  source_name: "demo-case.log",
+  source_type: "DEMONSTRATION",
+  source_reference: "SentinelFlow built-in demonstration",
+  report_approval_status: "APPROVED",
+  report_approval_feedback: "Demonstration approval only.",
+  report_approved_at: "2026-07-29T00:05:00.000Z",
   human_approval_required: true,
   autonomous_remediation_performed: false,
   generated_at: "2026-07-29T00:00:00.000Z",
@@ -39,9 +45,7 @@ const SAMPLE_REPORT = {
     "SentinelFlow is a supervised university prototype for simulated cybersecurity logs and is not a replacement for a qualified cybersecurity analyst.",
 };
 
-function decodeReportFromHash() {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  const encoded = params.get("data");
+function decodeEncodedReport(encoded) {
   if (!encoded) return null;
 
   try {
@@ -55,6 +59,39 @@ function decodeReportFromHash() {
     return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
+  }
+}
+
+function encodeReportPayload(report) {
+  const bytes = new TextEncoder().encode(JSON.stringify(report));
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return window
+    .btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function decodeReportFromHash() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return decodeEncodedReport(params.get("data"));
+}
+
+function enrichApprovedReportUrl(reportUrl, additions) {
+  try {
+    const url = new URL(reportUrl);
+    const params = new URLSearchParams(url.hash.replace(/^#/, ""));
+    const report = decodeEncodedReport(params.get("data"));
+    if (!report) return reportUrl;
+
+    params.set("data", encodeReportPayload({ ...report, ...additions }));
+    url.hash = params.toString();
+    return url.toString();
+  } catch {
+    return reportUrl;
   }
 }
 
@@ -89,6 +126,29 @@ const SUPPORTED_FILES = {
   csv: "text/csv",
   json: "application/json",
 };
+const REAL_LOG_CASES = [
+  {
+    id: "SF-REAL-001",
+    category: "SIMPLE",
+    title: "Linux session open and close",
+    source: "Loghub Linux",
+    url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-001-linux-simple-session.log",
+  },
+  {
+    id: "SF-REAL-002",
+    category: "COMPLEX",
+    title: "Repeated OpenSSH password failures",
+    source: "Loghub OpenSSH",
+    url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-002-openssh-complex-failures.log",
+  },
+  {
+    id: "SF-REAL-003",
+    category: "UNCERTAIN",
+    title: "Possible OpenSSH break-in evidence",
+    source: "Loghub OpenSSH",
+    url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-003-openssh-uncertain-breakin.log",
+  },
+];
 
 function validateAllowlistedUrl(value) {
   let url;
@@ -267,7 +327,12 @@ function InputAdapter() {
     setStatus(null);
   }
 
-  function prepareTextContent(rawContent, sourceName, sourceType) {
+  function prepareTextContent(
+    rawContent,
+    sourceName,
+    sourceType,
+    sourceReference = sourceName,
+  ) {
     const checked = validateLogContent(rawContent);
     const uploadName = safeUploadName(sourceName, "txt");
     const uploadFile = new File([checked.content], uploadName, {
@@ -277,6 +342,7 @@ function InputAdapter() {
       ...checked,
       sourceName,
       sourceType,
+      sourceReference,
       uploadFile,
       uploadName,
       converted: getFileExtension(sourceName) === "log" || sourceType === "ALLOWLISTED_URL",
@@ -325,6 +391,7 @@ function InputAdapter() {
       setPrepared({
         sourceName: file.name,
         sourceType: `LOCAL_${extension.toUpperCase()}_FILE`,
+        sourceReference: file.name,
         uploadFile,
         uploadName: uploadFile.name,
         converted: false,
@@ -383,6 +450,7 @@ function InputAdapter() {
         await response.text(),
         safeUrl.pathname.split("/").pop() || "remote.log",
         "ALLOWLISTED_URL",
+        safeUrl.href,
       );
     } catch (error) {
       const message =
@@ -535,10 +603,23 @@ function InputAdapter() {
 
       const result = await response.json();
       const message = flowiseResponseText(result);
-      const reportUrl = approvedReportUrl(message);
+      const originalReportUrl = approvedReportUrl(message);
+      const reportUrl = originalReportUrl
+        ? enrichApprovedReportUrl(originalReportUrl, {
+            source_name: prepared?.sourceName || "Not supplied",
+            source_type: prepared?.sourceType || "Not supplied",
+            source_reference:
+              prepared?.sourceReference || prepared?.sourceName || "Not supplied",
+            report_approval_status: "APPROVED",
+            report_approval_feedback:
+              feedback ||
+              "Approved after human review of the draft report and cited evidence.",
+            report_approved_at: new Date().toISOString(),
+          })
+        : null;
 
       setAnalysisResult({
-        message: cleanFlowiseMessage(message, reportUrl),
+        message: cleanFlowiseMessage(message, originalReportUrl),
         reportUrl,
       });
       setApprovalRequest(null);
@@ -713,6 +794,48 @@ function InputAdapter() {
             </div>
           </section>
         )}
+
+        <section className="real-test-cases">
+          <div>
+            <p className="eyebrow">OPENLY ATTRIBUTED ACADEMIC TEST DATA</p>
+            <h2>Loghub real-log excerpts</h2>
+            <p>
+              Small unchanged excerpts selected for simple, complex and
+              uncertain-path testing. Source lines, preparation and academic-use
+              permission are recorded in the manifest.
+            </p>
+          </div>
+          <div className="real-case-grid">
+            {REAL_LOG_CASES.map((testCase) => (
+              <article key={testCase.id}>
+                <span>{testCase.category}</span>
+                <strong>
+                  {testCase.id} · {testCase.title}
+                </strong>
+                <small>{testCase.source}</small>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("url");
+                    setUrlValue(testCase.url);
+                    setPrepared(null);
+                    setPhase("idle");
+                    resetResult();
+                  }}
+                >
+                  Use this source
+                </button>
+              </article>
+            ))}
+          </div>
+          <a
+            href="./test-data/loghub/source_manifest.json"
+            target="_blank"
+            rel="noreferrer"
+          >
+            View source, licence and preparation manifest
+          </a>
+        </section>
 
         {status && (
           <section
@@ -1002,6 +1125,12 @@ function App() {
         ].join("   |   "),
         { size: 8, color: [71, 85, 105], gapAfter: 5 },
       );
+      addWrapped(
+        `Source file: ${text(report.source_name)} | Input type: ${text(
+          report.source_type,
+        )} | Source reference: ${text(report.source_reference)}`,
+        { size: 8, color: [71, 85, 105], gapAfter: 5 },
+      );
 
       addSection("Executive summary");
       addWrapped(report.executive_summary);
@@ -1051,6 +1180,13 @@ function App() {
         }`,
         { bold: true },
       );
+      addWrapped(
+        `Report approval: ${text(
+          report.report_approval_status,
+          "Not recorded",
+        )} | Approved at: ${text(report.report_approved_at, "Not recorded")}`,
+        { bold: true },
+      );
 
       if (limitations.length) {
         addSection("Limitations");
@@ -1061,13 +1197,24 @@ function App() {
 
       addSection("Human analyst decision");
       addWrapped(
-        "Decision:  Approve / Reject / Escalate / More information required",
+        `Report release decision: ${text(
+          report.report_approval_status,
+          "Not recorded",
+        )}`,
+      );
+      addWrapped(`Reviewer feedback: ${text(
+        report.report_approval_feedback,
+        "Not recorded",
+      )}`);
+      addWrapped(`Recorded at: ${text(
+        report.report_approved_at,
+        "Not recorded",
+      )}`);
+      addWrapped(
+        "Operational response authorisation:  Approve / Reject / Escalate / More information required",
       );
       addWrapped(
-        "Analyst name: _______________________________________________",
-      );
-      addWrapped(
-        "Date and notes: ______________________________________________",
+        "Authorising analyst name: _____________________________________",
       );
       addWrapped(
         "____________________________________________________________",
@@ -1182,7 +1329,29 @@ function App() {
             <dt>Generated</dt>
             <dd>{generatedAt}</dd>
           </div>
+          <div>
+            <dt>Source file</dt>
+            <dd>{text(report.source_name)}</dd>
+          </div>
+          <div>
+            <dt>Input type</dt>
+            <dd>{text(report.source_type)}</dd>
+          </div>
         </dl>
+
+        <section className="report-section source-record">
+          <h2>Source record</h2>
+          <dl>
+            <div>
+              <dt>Uploaded filename</dt>
+              <dd>{text(report.source_name)}</dd>
+            </div>
+            <div>
+              <dt>Source reference</dt>
+              <dd>{text(report.source_reference)}</dd>
+            </div>
+          </dl>
+        </section>
 
         <section className="report-section">
           <h2>Executive summary</h2>
@@ -1264,6 +1433,12 @@ function App() {
                 </dd>
               </div>
               <div>
+                <dt>Report release</dt>
+                <dd>
+                  {text(report.report_approval_status, "Not recorded")}
+                </dd>
+              </div>
+              <div>
                 <dt>Autonomous remediation</dt>
                 <dd>
                   {report.autonomous_remediation_performed === true
@@ -1289,16 +1464,28 @@ function App() {
         <section className="human-decision">
           <div>
             <p className="eyebrow">HUMAN AUTHORITY RETAINED</p>
-            <h2>Analyst decision</h2>
+            <h2>Human decision record</h2>
             <p>
-              Approve, reject, escalate or request more information after
+              Report release:{" "}
+              <strong>
+                {text(report.report_approval_status, "Not recorded")}
+              </strong>
+            </p>
+            <p>
+              Operational action still requires separate authorisation after
               reviewing the cited evidence and rules.
             </p>
           </div>
           <div className="signature-fields">
-            <span>Decision</span>
-            <span>Analyst name</span>
-            <span>Date and notes</span>
+            <span>
+              Reviewer feedback:{" "}
+              {text(report.report_approval_feedback, "Not recorded")}
+            </span>
+            <span>
+              Report decision time:{" "}
+              {text(report.report_approved_at, "Not recorded")}
+            </span>
+            <span>Operational authorisation and analyst name</span>
           </div>
         </section>
 

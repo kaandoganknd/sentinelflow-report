@@ -389,6 +389,84 @@ a {
   font-size: 11px;
 }
 
+.real-test-cases {
+  margin: 22px 42px 0;
+  padding: 20px;
+  border: 1px solid #b9d8d7;
+  border-radius: 16px;
+  background: #f5fbfb;
+}
+
+.real-test-cases h2 {
+  margin: 5px 0 6px;
+  font-size: 19px;
+}
+
+.real-test-cases > div:first-child > p:last-child {
+  max-width: 800px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.real-case-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 16px 0 13px;
+  gap: 10px;
+}
+
+.real-case-grid article {
+  display: grid;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+  gap: 7px;
+}
+
+.real-case-grid article > span {
+  color: var(--teal-700);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+}
+
+.real-case-grid strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.real-case-grid small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.real-case-grid button {
+  min-height: 36px;
+  margin-top: 3px;
+  border: 1px solid #8fb9b7;
+  border-radius: 8px;
+  background: #effaf9;
+  color: var(--teal-900);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.real-case-grid button:hover {
+  background: var(--teal-100);
+}
+
+.real-test-cases > a {
+  color: var(--teal-700);
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .status-success {
   margin: 18px 42px 0;
   padding: 12px 15px;
@@ -715,7 +793,7 @@ a {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   margin: 0;
   padding: 0 42px 32px;
   gap: 1px;
@@ -761,6 +839,27 @@ dd {
   color: #334155;
   font-size: 14px;
   line-height: 1.65;
+}
+
+.source-record dl {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  margin: 0;
+  gap: 1px;
+}
+
+.source-record dl > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 7px;
+  background: #f2f7f7;
+}
+
+.source-record dd {
+  overflow-wrap: anywhere;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .finding-list,
@@ -927,6 +1026,10 @@ dd {
     grid-template-columns: 1fr 1fr;
   }
 
+  .real-case-grid {
+    grid-template-columns: 1fr;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -958,6 +1061,7 @@ dd {
     .direct-upload-panel,
     .conversion-heading,
     .workflow-steps,
+    .real-test-cases,
     .status-success,
     .status-progress,
     .status-approval,
@@ -994,6 +1098,10 @@ dd {
   .summary-grid {
     grid-template-columns: 1fr;
     padding: 0 0 22px;
+  }
+
+  .source-record dl {
+    grid-template-columns: 1fr;
   }
 
   .approval-summary,

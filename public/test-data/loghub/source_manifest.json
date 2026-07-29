@@ -1,0 +1,56 @@
+{
+  "manifest_version": "1.0",
+  "prepared_for": "LD7237 SentinelFlow supervised university prototype",
+  "prepared_date": "2026-07-29",
+  "publisher": "LogPAI / Loghub",
+  "repository": "https://github.com/logpai/loghub",
+  "permission": "Freely available for research or academic work, subject to repository attribution, paper citation where applicable, and inclusion of the Loghub licence notice with copies.",
+  "licence_url": "https://github.com/logpai/loghub/blob/master/LICENSE",
+  "citation": "Jieming Zhu, Shilin He, Pinjia He, Jinyang Liu, and Michael R. Lyu. Loghub: A Large Collection of System Log Datasets for AI-driven Log Analytics. ISSRE, 2023.",
+  "privacy_note": "Loghub states that datasets may be unsanitized. These small excerpts are used only as approved academic test evidence and must not be treated as live operational intelligence.",
+  "preparation": "Selected source lines were excerpted with their visible log content unchanged. Surrounding records were removed, original order was preserved, CRLF line endings were normalised to LF, trailing whitespace was removed, and no ground-truth label was inserted into the log files.",
+  "cases": [
+    {
+      "test_id": "SF-REAL-001",
+      "category": "SIMPLE",
+      "file": "SF-REAL-001-linux-simple-session.log",
+      "dataset": "Loghub Linux",
+      "dataset_description": "Linux system log collected from a real system and distributed by Loghub for academic research.",
+      "source_file": "Linux_2k.log",
+      "source_url": "https://raw.githubusercontent.com/logpai/loghub/master/Linux/Linux_2k.log",
+      "source_lines": "651 and 655",
+      "expected_route": "SIMPLE",
+      "expected_decision": "HUMAN_REVIEW",
+      "expected_reason": "The session open/close pair is narrow and internally consistent, but source-network and approval context are absent, so the prototype should avoid asserting NO_ALERT.",
+      "expected_event_count": 2
+    },
+    {
+      "test_id": "SF-REAL-002",
+      "category": "COMPLEX",
+      "file": "SF-REAL-002-openssh-complex-failures.log",
+      "dataset": "Loghub OpenSSH",
+      "dataset_description": "OpenSSH server log collected in the LogPAI laboratory over more than 28 days.",
+      "source_file": "OpenSSH_2k.log",
+      "source_url": "https://raw.githubusercontent.com/logpai/loghub/master/OpenSSH/OpenSSH_2k.log",
+      "source_lines": "35, 38, 41, 44 and 47",
+      "expected_route": "COMPLEX",
+      "expected_decision": "HUMAN_REVIEW",
+      "expected_reason": "Five failed root-password attempts in eleven seconds require correlation and escalation. The current controlled rule base must not misuse SF-AUTH-201 because no subsequent successful login is supplied.",
+      "expected_event_count": 5
+    },
+    {
+      "test_id": "SF-REAL-003",
+      "category": "UNCERTAIN",
+      "file": "SF-REAL-003-openssh-uncertain-breakin.log",
+      "dataset": "Loghub OpenSSH",
+      "dataset_description": "OpenSSH server log collected in the LogPAI laboratory over more than 28 days.",
+      "source_file": "OpenSSH_2k.log",
+      "source_url": "https://raw.githubusercontent.com/logpai/loghub/master/OpenSSH/OpenSSH_2k.log",
+      "source_lines": "1, 2, 5, 6 and 7",
+      "expected_route": "HUMAN_REVIEW",
+      "expected_decision": "HUMAN_REVIEW",
+      "expected_reason": "The source log itself says POSSIBLE BREAK-IN ATTEMPT, but one failed invalid-user attempt and a reverse-DNS mismatch do not prove compromise.",
+      "expected_event_count": 5
+    }
+  ]
+}
