@@ -213,6 +213,20 @@ function approvedReportUrl(message) {
   );
 }
 
+function cleanFlowiseMessage(message, reportUrl) {
+  const original = String(message ?? "");
+  if (!reportUrl) return original;
+
+  return original
+    .replace(
+      /Open the report and select [“"]Download PDF report[”"]:\s*/gi,
+      "",
+    )
+    .replace(/\[[^\]]+\]\(https:\/\/kaandoganknd\.github\.io\/sentinelflow-report\/#data=[^)]+\)/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function InputAdapter() {
   const [mode, setMode] = useState("file");
   const [urlValue, setUrlValue] = useState(DEMO_LOG_URL);
@@ -407,7 +421,10 @@ function InputAdapter() {
       const result = await response.json();
       const message = flowiseResponseText(result);
       const reportUrl = approvedReportUrl(message);
-      setAnalysisResult({ message, reportUrl });
+      setAnalysisResult({
+        message: cleanFlowiseMessage(message, reportUrl),
+        reportUrl,
+      });
       setPhase("complete");
       setStatus({
         type: "success",
