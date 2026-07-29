@@ -74,6 +74,343 @@ function severityClass(value) {
   return `severity severity-${text(value, "none").toLowerCase()}`;
 }
 
+const MAX_INPUT_BYTES = 100_000;
+const MAX_INPUT_CHARACTERS = 40_000;
+const MAX_INPUT_EVENTS = 500;
+const DEMO_LOG_URL =
+  "https://kaandoganknd.github.io/sentinelflow-report/test-data/benign-login.log";
+
+function validateAllowlistedUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Enter a complete HTTPS URL.");
+  }
+
+  if (url.protocol !== "https:") {
+    throw new Error("Only HTTPS URLs are permitted.");
+  }
+  if (url.username || url.password) {
+    throw new Error("URLs containing credentials are not permitted.");
+  }
+  if (url.port && url.port !== "443") {
+    throw new Error("Only the standard HTTPS port is permitted.");
+  }
+
+  const allowed =
+    (url.hostname === "kaandoganknd.github.io" &&
+      url.pathname.startsWith("/sentinelflow-report/test-data/")) ||
+    (url.hostname === "raw.githubusercontent.com" &&
+      url.pathname.startsWith("/kaandoganknd/sentinelflow-report/"));
+
+  if (!allowed) {
+    throw new Error(
+      "URL blocked: only the SentinelFlow teaching-data locations are allowlisted.",
+    );
+  }
+
+  if (!/\.(log|txt)$/i.test(url.pathname)) {
+    throw new Error("The allowlisted URL must point to a .log or .txt file.");
+  }
+
+  return url;
+}
+
+function validateLogContent(value) {
+  const normalised = String(value ?? "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n");
+
+  if (!normalised.trim()) {
+    throw new Error("The selected source contains no readable log text.");
+  }
+  if (normalised.includes("\u0000")) {
+    throw new Error("Binary or null-byte content is not permitted.");
+  }
+  if (normalised.length > MAX_INPUT_CHARACTERS) {
+    throw new Error(
+      `The prototype accepts at most ${MAX_INPUT_CHARACTERS.toLocaleString()} characters per case.`,
+    );
+  }
+
+  const eventCount = normalised
+    .split("\n")
+    .filter((line) => line.trim().length > 0).length;
+  if (eventCount > MAX_INPUT_EVENTS) {
+    throw new Error(
+      `The prototype accepts at most ${MAX_INPUT_EVENTS} non-empty log lines per case.`,
+    );
+  }
+
+  return { content: normalised, eventCount };
+}
+
+function InputAdapter() {
+  const [mode, setMode] = useState("file");
+  const [urlValue, setUrlValue] = useState(DEMO_LOG_URL);
+  const [prepared, setPrepared] = useState(null);
+  const [status, setStatus] = useState(null);
+  const [isFetching, setIsFetching] = useState(false);
+
+  function prepareContent(rawContent, sourceName, sourceType) {
+    const checked = validateLogContent(rawContent);
+    setPrepared({
+      ...checked,
+      sourceName,
+      sourceType,
+    });
+    setStatus({
+      type: "success",
+      message: `${checked.eventCount} log line(s) validated and ready for Flowise.`,
+    });
+  }
+
+  async function handleFile(event) {
+    const file = event.target.files?.[0];
+    setPrepared(null);
+    setStatus(null);
+    if (!file) return;
+
+    try {
+      if (!file.name.toLowerCase().endsWith(".log")) {
+        throw new Error("Select a file with the .log extension.");
+      }
+      if (file.size > MAX_INPUT_BYTES) {
+        throw new Error(
+          `The file exceeds the ${MAX_INPUT_BYTES.toLocaleString()}-byte intake limit.`,
+        );
+      }
+      prepareContent(await file.text(), file.name, "LOCAL_LOG_FILE");
+    } catch (error) {
+      setStatus({ type: "error", message: error.message });
+    }
+  }
+
+  async function handleUrl(event) {
+    event.preventDefault();
+    setPrepared(null);
+    setStatus(null);
+    setIsFetching(true);
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const safeUrl = validateAllowlistedUrl(urlValue.trim());
+      const response = await fetch(safeUrl, {
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`The allowlisted source returned HTTP ${response.status}.`);
+      }
+
+      const contentLength = Number(response.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > MAX_INPUT_BYTES) {
+        throw new Error("The remote file exceeds the intake size limit.");
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (
+        contentType &&
+        !/^(text\/plain|text\/x-log|application\/octet-stream)(?:;|$)/i.test(
+          contentType,
+        )
+      ) {
+        throw new Error(`Blocked response content type: ${contentType}.`);
+      }
+
+      prepareContent(
+        await response.text(),
+        safeUrl.pathname.split("/").pop() || "remote.log",
+        "ALLOWLISTED_URL",
+      );
+    } catch (error) {
+      const message =
+        error.name === "AbortError"
+          ? "The allowlisted source did not respond within 8 seconds."
+          : error.message;
+      setStatus({ type: "error", message });
+    } finally {
+      window.clearTimeout(timeout);
+      setIsFetching(false);
+    }
+  }
+
+  function downloadPreparedFile() {
+    if (!prepared) return;
+    const safeBaseName = prepared.sourceName
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+    const blob = new Blob([prepared.content], {
+      type: "text/plain;charset=utf-8",
+    });
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `${safeBaseName || "SentinelFlow_Log"}_ready.txt`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
+  return (
+    <main className="page-shell">
+      <header className="site-header">
+        <div className="brand">
+          <span className="brand-mark">SF</span>
+          <div>
+            <p className="eyebrow">SENTINELFLOW</p>
+            <p className="brand-subtitle">Safe log input adapter</p>
+          </div>
+        </div>
+        <a className="secondary-button" href="./">
+          Return to report viewer
+        </a>
+      </header>
+
+      <section className="privacy-note">
+        <strong>Local-first processing:</strong> selected files remain in your
+        browser. URL retrieval is restricted to the displayed teaching-data
+        allowlist. No credentials or API keys are used.
+      </section>
+
+      <article className="adapter-card">
+        <div className="adapter-heading">
+          <p className="eyebrow">CONTROLLED INPUT PREPARATION</p>
+          <h1>Prepare a .log file for SentinelFlow</h1>
+          <p>
+            Validate a local LOG file or retrieve a text log from an explicitly
+            allowlisted HTTPS location, then download a TXT file accepted by
+            the Flowise prototype.
+          </p>
+        </div>
+
+        <div className="mode-tabs" role="tablist" aria-label="Input source">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "file"}
+            className={mode === "file" ? "active" : ""}
+            onClick={() => {
+              setMode("file");
+              setPrepared(null);
+              setStatus(null);
+            }}
+          >
+            Local .log file
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "url"}
+            className={mode === "url" ? "active" : ""}
+            onClick={() => {
+              setMode("url");
+              setPrepared(null);
+              setStatus(null);
+            }}
+          >
+            Allowlisted URL
+          </button>
+        </div>
+
+        {mode === "file" ? (
+          <section className="adapter-panel" role="tabpanel">
+            <label className="file-drop">
+              <span className="file-drop-title">Choose a .log file</span>
+              <span>
+                Maximum {MAX_INPUT_CHARACTERS.toLocaleString()} characters and{" "}
+                {MAX_INPUT_EVENTS} non-empty lines
+              </span>
+              <input type="file" accept=".log,text/plain" onChange={handleFile} />
+            </label>
+          </section>
+        ) : (
+          <section className="adapter-panel" role="tabpanel">
+            <form className="url-form" onSubmit={handleUrl}>
+              <label htmlFor="log-url">Allowlisted HTTPS log URL</label>
+              <div className="url-row">
+                <input
+                  id="log-url"
+                  type="url"
+                  value={urlValue}
+                  onChange={(event) => setUrlValue(event.target.value)}
+                  spellCheck="false"
+                  required
+                />
+                <button
+                  className="download-button"
+                  type="submit"
+                  disabled={isFetching}
+                >
+                  {isFetching ? "Checking..." : "Validate URL"}
+                </button>
+              </div>
+            </form>
+            <div className="allowlist">
+              <strong>Allowlist</strong>
+              <code>
+                kaandoganknd.github.io/sentinelflow-report/test-data/
+              </code>
+              <code>
+                raw.githubusercontent.com/kaandoganknd/sentinelflow-report/
+              </code>
+            </div>
+          </section>
+        )}
+
+        {status && (
+          <section
+            className={status.type === "success" ? "status-success" : "error-note"}
+            role="status"
+          >
+            {status.message}
+          </section>
+        )}
+
+        {prepared && (
+          <section className="prepared-output">
+            <div className="prepared-summary">
+              <div>
+                <p className="eyebrow">VALIDATED SOURCE</p>
+                <h2>{prepared.sourceName}</h2>
+                <p>
+                  {prepared.sourceType} · {prepared.content.length} characters ·{" "}
+                  {prepared.eventCount} log line(s)
+                </p>
+              </div>
+              <button
+                className="download-button"
+                type="button"
+                onClick={downloadPreparedFile}
+              >
+                Download Flowise-ready TXT
+              </button>
+            </div>
+            <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
+            <ol className="next-instructions">
+              <li>Download the validated TXT file.</li>
+              <li>Attach it to a new SentinelFlow Flowise chat.</li>
+              <li>
+                Send: <code>Analyse the attached cybersecurity log file.</code>
+              </li>
+            </ol>
+          </section>
+        )}
+
+        <footer className="adapter-footer">
+          This supervised university prototype accepts simulated or approved
+          teaching data only. Conversion does not perform analysis or autonomous
+          remediation.
+        </footer>
+      </article>
+    </main>
+  );
+}
+
 function App() {
   const [report, setReport] = useState(SAMPLE_REPORT);
   const [isDemo, setIsDemo] = useState(true);
@@ -287,14 +624,19 @@ function App() {
             </p>
           </div>
         </div>
-        <button
-          className="download-button"
-          type="button"
-          onClick={downloadPdf}
-          disabled={isDownloading}
-        >
-          {isDownloading ? "Preparing PDF..." : "Download PDF report"}
-        </button>
+        <div className="header-actions">
+          <a className="secondary-button" href="?mode=intake">
+            Safe Input Adapter
+          </a>
+          <button
+            className="download-button"
+            type="button"
+            onClick={downloadPdf}
+            disabled={isDownloading}
+          >
+            {isDownloading ? "Preparing PDF..." : "Download PDF report"}
+          </button>
+        </div>
       </header>
 
       <section className="privacy-note">
@@ -483,8 +825,13 @@ function App() {
   );
 }
 
+function RootApp() {
+  const mode = new URLSearchParams(window.location.search).get("mode");
+  return mode === "intake" ? <InputAdapter /> : <App />;
+}
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    <RootApp />
   </React.StrictMode>,
 );

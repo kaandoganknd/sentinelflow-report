@@ -1,0 +1,2 @@
+2026-07-28T10:00:00Z user=alice source_ip=192.0.2.10 action=login result=failed reason=mistyped_password
+2026-07-28T10:01:00Z user=alice source_ip=192.0.2.10 action=login result=success
