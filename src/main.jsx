@@ -74,11 +74,21 @@ function severityClass(value) {
   return `severity severity-${text(value, "none").toLowerCase()}`;
 }
 
-const MAX_INPUT_BYTES = 100_000;
+const MAX_INPUT_BYTES = 2_000_000;
 const MAX_INPUT_CHARACTERS = 40_000;
 const MAX_INPUT_EVENTS = 500;
 const DEMO_LOG_URL =
   "https://kaandoganknd.github.io/sentinelflow-report/test-data/benign-login.log";
+const FLOWISE_API_HOST = "https://cloud.flowiseai.com";
+const FLOWISE_FLOW_ID = "6b982cfc-bf9f-4078-8432-cfc0bac3634d";
+const ANALYSIS_QUESTION = "Analyse the attached cybersecurity log file.";
+const SUPPORTED_FILES = {
+  log: "text/plain",
+  txt: "text/plain",
+  pdf: "application/pdf",
+  csv: "text/csv",
+  json: "application/json",
+};
 
 function validateAllowlistedUrl(value) {
   let url;
@@ -146,59 +156,148 @@ function validateLogContent(value) {
   return { content: normalised, eventCount };
 }
 
+function getFileExtension(name) {
+  return String(name ?? "")
+    .split(".")
+    .pop()
+    .toLowerCase();
+}
+
+function safeUploadName(name, extension) {
+  const baseName = String(name ?? "SentinelFlow_Log")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^A-Za-z0-9_-]/g, "_")
+    .slice(0, 80);
+  return `${baseName || "SentinelFlow_Log"}.${extension}`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () =>
+      reject(new Error("The selected file could not be prepared for analysis."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function flowiseResponseText(result) {
+  if (typeof result === "string" && result.trim()) return result.trim();
+  if (typeof result?.text === "string" && result.text.trim()) {
+    return result.text.trim();
+  }
+  if (typeof result?.json === "string" && result.json.trim()) {
+    return result.json.trim();
+  }
+  if (result?.json && typeof result.json === "object") {
+    return JSON.stringify(result.json, null, 2);
+  }
+  return "SentinelFlow completed the request but did not return a displayable response.";
+}
+
+function approvedReportUrl(message) {
+  const candidates = String(message ?? "").match(/https:\/\/[^\s)\]]+/g) || [];
+  return (
+    candidates.find((candidate) => {
+      try {
+        const url = new URL(candidate);
+        return (
+          url.hostname === "kaandoganknd.github.io" &&
+          url.pathname === "/sentinelflow-report/" &&
+          url.hash.startsWith("#data=")
+        );
+      } catch {
+        return false;
+      }
+    }) || null
+  );
+}
+
 function InputAdapter() {
   const [mode, setMode] = useState("file");
   const [urlValue, setUrlValue] = useState(DEMO_LOG_URL);
   const [prepared, setPrepared] = useState(null);
   const [status, setStatus] = useState(null);
   const [isFetching, setIsFetching] = useState(false);
+  const [phase, setPhase] = useState("idle");
+  const [analysisResult, setAnalysisResult] = useState(null);
 
-  function openSentinelFlowChat() {
-    const chatbot = document.querySelector("flowise-chatbot");
-    const launcher = chatbot?.shadowRoot?.querySelector("button");
-
-    if (launcher) {
-      launcher.click();
-      return;
-    }
-
-    setStatus({
-      type: "error",
-      message:
-        "The embedded chat is still loading. Please use Open SentinelFlow Chat at the lower right.",
-    });
+  function resetResult() {
+    setAnalysisResult(null);
+    setStatus(null);
   }
 
-  function prepareContent(rawContent, sourceName, sourceType) {
+  function prepareTextContent(rawContent, sourceName, sourceType) {
     const checked = validateLogContent(rawContent);
+    const uploadName = safeUploadName(sourceName, "txt");
+    const uploadFile = new File([checked.content], uploadName, {
+      type: "text/plain",
+    });
     setPrepared({
       ...checked,
       sourceName,
       sourceType,
+      uploadFile,
+      uploadName,
+      converted: getFileExtension(sourceName) === "log" || sourceType === "ALLOWLISTED_URL",
     });
+    setPhase("ready");
     setStatus({
       type: "success",
-      message: `${checked.eventCount} log line(s) validated and ready for Flowise.`,
+      message: `${checked.eventCount} log line(s) validated. SentinelFlow will receive a secure in-memory TXT version.`,
     });
   }
 
   async function handleFile(event) {
     const file = event.target.files?.[0];
     setPrepared(null);
-    setStatus(null);
+    resetResult();
     if (!file) return;
 
     try {
-      if (!file.name.toLowerCase().endsWith(".log")) {
-        throw new Error("Select a file with the .log extension.");
+      setPhase("preparing");
+      const extension = getFileExtension(file.name);
+      if (!SUPPORTED_FILES[extension]) {
+        throw new Error("Select a LOG, TXT, PDF, CSV or JSON file.");
+      }
+      if (!file.size) {
+        throw new Error("The selected file is empty.");
       }
       if (file.size > MAX_INPUT_BYTES) {
         throw new Error(
-          `The file exceeds the ${MAX_INPUT_BYTES.toLocaleString()}-byte intake limit.`,
+          `The file exceeds the ${(MAX_INPUT_BYTES / 1_000_000).toFixed(0)} MB prototype limit.`,
         );
       }
-      prepareContent(await file.text(), file.name, "LOCAL_LOG_FILE");
+
+      if (extension === "log" || extension === "txt") {
+        prepareTextContent(
+          await file.text(),
+          file.name,
+          extension === "log" ? "LOCAL_LOG_FILE" : "LOCAL_TEXT_FILE",
+        );
+        return;
+      }
+
+      const mime = file.type || SUPPORTED_FILES[extension];
+      const uploadFile = new File([file], safeUploadName(file.name, extension), {
+        type: mime,
+      });
+      setPrepared({
+        sourceName: file.name,
+        sourceType: `LOCAL_${extension.toUpperCase()}_FILE`,
+        uploadFile,
+        uploadName: uploadFile.name,
+        converted: false,
+        eventCount: null,
+        content: null,
+      });
+      setPhase("ready");
+      setStatus({
+        type: "success",
+        message: `${file.name} is validated and ready for automatic analysis.`,
+      });
     } catch (error) {
+      setPhase("error");
       setStatus({ type: "error", message: error.message });
     }
   }
@@ -206,8 +305,9 @@ function InputAdapter() {
   async function handleUrl(event) {
     event.preventDefault();
     setPrepared(null);
-    setStatus(null);
+    resetResult();
     setIsFetching(true);
+    setPhase("preparing");
 
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 8000);
@@ -239,7 +339,7 @@ function InputAdapter() {
         throw new Error(`Blocked response content type: ${contentType}.`);
       }
 
-      prepareContent(
+      prepareTextContent(
         await response.text(),
         safeUrl.pathname.split("/").pop() || "remote.log",
         "ALLOWLISTED_URL",
@@ -249,6 +349,7 @@ function InputAdapter() {
         error.name === "AbortError"
           ? "The allowlisted source did not respond within 8 seconds."
           : error.message;
+      setPhase("error");
       setStatus({ type: "error", message });
     } finally {
       window.clearTimeout(timeout);
@@ -256,21 +357,81 @@ function InputAdapter() {
     }
   }
 
-  function downloadPreparedFile() {
+  async function analysePreparedFile() {
     if (!prepared) return;
-    const safeBaseName = prepared.sourceName
-      .replace(/\.[^.]+$/, "")
-      .replace(/[^A-Za-z0-9_-]/g, "_");
-    const blob = new Blob([prepared.content], {
-      type: "text/plain;charset=utf-8",
+    setPhase("submitting");
+    setAnalysisResult(null);
+    setStatus({
+      type: "progress",
+      message:
+        "The file is being analysed. Routing, rule retrieval, ledger validation and Supervisor review may take a moment.",
     });
-    const objectUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = `${safeBaseName || "SentinelFlow_Log"}_ready.txt`;
-    anchor.click();
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+
+    try {
+      const data = await readFileAsDataUrl(prepared.uploadFile);
+      const sessionId =
+        typeof crypto.randomUUID === "function"
+          ? `sf-web-${crypto.randomUUID()}`
+          : `sf-web-${Date.now()}`;
+      const response = await fetch(
+        `${FLOWISE_API_HOST}/api/v1/prediction/${FLOWISE_FLOW_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "omit",
+          body: JSON.stringify({
+            question: ANALYSIS_QUESTION,
+            streaming: false,
+            overrideConfig: { sessionId },
+            uploads: [
+              {
+                type: "file:full",
+                name: prepared.uploadName,
+                data,
+                mime: prepared.uploadFile.type || "text/plain",
+              },
+            ],
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          response.status === 413
+            ? "The prepared request is too large for Flowise."
+            : `SentinelFlow returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : "."}`,
+        );
+      }
+
+      const result = await response.json();
+      const message = flowiseResponseText(result);
+      const reportUrl = approvedReportUrl(message);
+      setAnalysisResult({ message, reportUrl });
+      setPhase("complete");
+      setStatus({
+        type: "success",
+        message: reportUrl
+          ? "Analysis passed deterministic validation and Supervisor review. The approved report is ready."
+          : "SentinelFlow completed the case. Review the controlled response below.",
+      });
+    } catch (error) {
+      setPhase("error");
+      setStatus({
+        type: "error",
+        message: `The analysis could not be completed: ${error.message}`,
+      });
+    }
   }
+
+  const phaseIndex = {
+    idle: 0,
+    preparing: 1,
+    ready: 1,
+    submitting: 2,
+    complete: 3,
+    error: prepared ? 1 : 0,
+  }[phase];
 
   return (
     <main className="page-shell">
@@ -279,7 +440,7 @@ function InputAdapter() {
           <span className="brand-mark">SF</span>
           <div>
             <p className="eyebrow">SENTINELFLOW</p>
-            <p className="brand-subtitle">Safe log input adapter</p>
+            <p className="brand-subtitle">Unified cybersecurity log intake</p>
           </div>
         </div>
         <a className="secondary-button" href="./">
@@ -288,44 +449,50 @@ function InputAdapter() {
       </header>
 
       <section className="privacy-note">
-        <strong>Controlled processing:</strong> selected files remain in your
-        browser while they are validated and converted. They are sent to
-        Flowise only if you deliberately attach them in the SentinelFlow Chat.
-        URL retrieval is restricted to the displayed teaching-data allowlist.
-        No credentials or API keys are embedded in this adapter.
+        <strong>Controlled processing:</strong> conversion happens temporarily
+        in your browser. The prepared case is sent to the university Flowise
+        prototype only when you select <strong>Analyse file</strong>. No file is
+        stored by this page. Use simulated or explicitly approved teaching data
+        only.
       </section>
 
       <article className="adapter-card">
         <div className="adapter-heading">
-          <p className="eyebrow">CONTROLLED INPUT PREPARATION</p>
-          <h1>Submit a cybersecurity log to SentinelFlow</h1>
+          <p className="eyebrow">ONE UPLOAD · ONE CONTROLLED WORKFLOW</p>
+          <h1>Upload once. SentinelFlow handles the rest.</h1>
           <p>
-            Upload supported files directly, or safely prepare a LOG file or
-            allowlisted online source before analysis.
+            Submit one LOG, TXT, PDF, CSV or JSON case. Required conversion,
+            analysis, evidence checks and report preparation happen in the
+            background without a second download or upload.
           </p>
         </div>
 
-        <section className="direct-upload-panel">
-          <div>
-            <p className="eyebrow">DIRECTLY SUPPORTED FILES</p>
-            <h2>Already have TXT, PDF, CSV or JSON?</h2>
-            <p>
-              No conversion is required. Open SentinelFlow Chat and attach the
-              file directly using the paperclip button.
-            </p>
-          </div>
-          <button
-            className="download-button"
-            type="button"
-            onClick={openSentinelFlowChat}
-          >
-            Open SentinelFlow Chat
-          </button>
+        <section className="workflow-steps" aria-label="Analysis workflow">
+          {[
+            "File selected",
+            "Validated and prepared",
+            "SentinelFlow analysis",
+            "Controlled result",
+          ].map((label, index) => (
+            <div
+              className={
+                index < phaseIndex
+                  ? "workflow-step complete"
+                  : index === phaseIndex
+                    ? "workflow-step active"
+                    : "workflow-step"
+              }
+              key={label}
+            >
+              <span>{index + 1}</span>
+              <p>{label}</p>
+            </div>
+          ))}
         </section>
 
         <div className="conversion-heading">
-          <p className="eyebrow">LOG AND ONLINE SOURCE CONVERSION</p>
-          <h2>Prepare a source that Flowise cannot attach directly</h2>
+          <p className="eyebrow">CASE SOURCE</p>
+          <h2>Select a local file or controlled teaching-data URL</h2>
         </div>
 
         <div className="mode-tabs" role="tablist" aria-label="Input source">
@@ -340,7 +507,7 @@ function InputAdapter() {
               setStatus(null);
             }}
           >
-            Local .log file
+            Local file
           </button>
           <button
             type="button"
@@ -360,12 +527,18 @@ function InputAdapter() {
         {mode === "file" ? (
           <section className="adapter-panel" role="tabpanel">
             <label className="file-drop">
-              <span className="file-drop-title">Choose a .log file</span>
-              <span>
-                Maximum {MAX_INPUT_CHARACTERS.toLocaleString()} characters and{" "}
-                {MAX_INPUT_EVENTS} non-empty lines
+              <span className="file-drop-title">
+                Choose a LOG, TXT, PDF, CSV or JSON file
               </span>
-              <input type="file" accept=".log,text/plain" onChange={handleFile} />
+              <span>
+                One case per file · Maximum{" "}
+                {(MAX_INPUT_BYTES / 1_000_000).toFixed(0)} MB
+              </span>
+              <input
+                type="file"
+                accept=".log,.txt,.pdf,.csv,.json,text/plain,text/csv,application/pdf,application/json"
+                onChange={handleFile}
+              />
             </label>
           </section>
         ) : (
@@ -404,8 +577,15 @@ function InputAdapter() {
 
         {status && (
           <section
-            className={status.type === "success" ? "status-success" : "error-note"}
+            className={
+              status.type === "success"
+                ? "status-success"
+                : status.type === "progress"
+                  ? "status-progress"
+                  : "error-note"
+            }
             role="status"
+            aria-live="polite"
           >
             {status.message}
           </section>
@@ -415,46 +595,67 @@ function InputAdapter() {
           <section className="prepared-output">
             <div className="prepared-summary">
               <div>
-                <p className="eyebrow">VALIDATED SOURCE</p>
+                <p className="eyebrow">READY FOR CONTROLLED ANALYSIS</p>
                 <h2>{prepared.sourceName}</h2>
                 <p>
-                  {prepared.sourceType} · {prepared.content.length} characters ·{" "}
-                  {prepared.eventCount} log line(s)
+                  {prepared.sourceType}
+                  {prepared.eventCount !== null &&
+                    ` · ${prepared.eventCount} log line(s)`}
+                  {prepared.converted && " · converted privately in memory"}
                 </p>
               </div>
               <button
                 className="download-button"
                 type="button"
-                onClick={downloadPreparedFile}
+                onClick={analysePreparedFile}
+                disabled={phase === "submitting"}
               >
-                Download Flowise-ready TXT
+                {phase === "submitting"
+                  ? "Analysing securely..."
+                  : "Analyse file"}
               </button>
             </div>
-            <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
-            <ol className="next-instructions">
-              <li>Download the validated TXT file.</li>
-              <li>
-                Select <strong>Open SentinelFlow Chat</strong> at the lower
-                right of this page.
-              </li>
-              <li>Attach the downloaded TXT file to a new chat.</li>
-              <li>
-                Send: <code>Analyse the attached cybersecurity log file.</code>
-              </li>
-            </ol>
+            {prepared.content && (
+              <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
+            )}
             <p className="public-chat-note">
-              <strong>University demonstration access:</strong> the embedded
-              chat currently uses the Flowise prototype without user
-              authentication. Use only simulated or explicitly approved
-              teaching data.
+              <strong>University demonstration access:</strong> this public
+              prototype uses Flowise without user authentication. Do not submit
+              personal, confidential or production security data.
             </p>
+          </section>
+        )}
+
+        {analysisResult && (
+          <section className="analysis-result">
+            <p className="eyebrow">
+              {analysisResult.reportUrl
+                ? "APPROVED REPORT READY"
+                : "CONTROLLED SENTINELFLOW RESPONSE"}
+            </p>
+            <h2>
+              {analysisResult.reportUrl
+                ? "The case passed the automated control gates"
+                : "The case requires review"}
+            </h2>
+            <div className="result-message">{analysisResult.message}</div>
+            {analysisResult.reportUrl && (
+              <a
+                className="download-button result-link"
+                href={analysisResult.reportUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open approved report and download PDF
+              </a>
+            )}
           </section>
         )}
 
         <footer className="adapter-footer">
           This supervised university prototype accepts simulated or approved
-          teaching data only. Conversion does not perform analysis or autonomous
-          remediation.
+          teaching data only. Human approval remains required and no autonomous
+          remediation is performed.
         </footer>
       </article>
     </main>
@@ -676,7 +877,7 @@ function App() {
         </div>
         <div className="header-actions">
           <a className="secondary-button" href="?mode=intake">
-            Safe Input Adapter
+            Analyse a log file
           </a>
           <button
             className="download-button"
