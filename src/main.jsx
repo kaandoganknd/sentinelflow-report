@@ -227,6 +227,28 @@ function cleanFlowiseMessage(message, reportUrl) {
     .trim();
 }
 
+function hasHumanInputAction(result) {
+  const elements = result?.action?.elements;
+  return (
+    Array.isArray(elements) &&
+    elements.some((element) => element?.type === "agentflowv2-approve-button") &&
+    elements.some((element) => element?.type === "agentflowv2-reject-button")
+  );
+}
+
+function parseDraftReport(message) {
+  const source = String(message ?? "");
+  const fenced = source.match(/```json\s*([\s\S]*?)```/i);
+  if (!fenced) return null;
+
+  try {
+    const parsed = JSON.parse(fenced[1]);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function InputAdapter() {
   const [mode, setMode] = useState("file");
   const [urlValue, setUrlValue] = useState(DEMO_LOG_URL);
@@ -235,9 +257,13 @@ function InputAdapter() {
   const [isFetching, setIsFetching] = useState(false);
   const [phase, setPhase] = useState("idle");
   const [analysisResult, setAnalysisResult] = useState(null);
+  const [approvalRequest, setApprovalRequest] = useState(null);
+  const [reviewerFeedback, setReviewerFeedback] = useState("");
 
   function resetResult() {
     setAnalysisResult(null);
+    setApprovalRequest(null);
+    setReviewerFeedback("");
     setStatus(null);
   }
 
@@ -420,6 +446,22 @@ function InputAdapter() {
 
       const result = await response.json();
       const message = flowiseResponseText(result);
+
+      if (hasHumanInputAction(result)) {
+        setApprovalRequest({
+          sessionId: result.sessionId || sessionId,
+          message,
+          draftReport: parseDraftReport(message),
+        });
+        setPhase("awaiting_approval");
+        setStatus({
+          type: "approval",
+          message:
+            "Automated validation and Supervisor review passed. A human reviewer must now approve or reject the draft before PDF delivery.",
+        });
+        return;
+      }
+
       const reportUrl = approvedReportUrl(message);
       setAnalysisResult({
         message: cleanFlowiseMessage(message, reportUrl),
@@ -441,13 +483,91 @@ function InputAdapter() {
     }
   }
 
+  async function submitHumanDecision(type) {
+    if (!approvalRequest) return;
+
+    const feedback = reviewerFeedback.trim();
+    if (type === "reject" && !feedback) {
+      setStatus({
+        type: "error",
+        message:
+          "Enter a short reason before rejecting the draft report so the decision remains auditable.",
+      });
+      return;
+    }
+
+    setPhase("resuming");
+    setStatus({
+      type: "progress",
+      message:
+        type === "proceed"
+          ? "Human approval is being recorded and the PDF report is being prepared."
+          : "Human rejection and reviewer feedback are being recorded.",
+    });
+
+    try {
+      const response = await fetch(
+        `${FLOWISE_API_HOST}/api/v1/prediction/${FLOWISE_FLOW_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "omit",
+          body: JSON.stringify({
+            question: "",
+            streaming: false,
+            overrideConfig: { sessionId: approvalRequest.sessionId },
+            humanInput: {
+              type,
+              feedback:
+                feedback ||
+                "Approved after human review of the draft report and cited evidence.",
+            },
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(
+          `SentinelFlow returned HTTP ${response.status}${detail ? `: ${detail.slice(0, 180)}` : "."}`,
+        );
+      }
+
+      const result = await response.json();
+      const message = flowiseResponseText(result);
+      const reportUrl = approvedReportUrl(message);
+
+      setAnalysisResult({
+        message: cleanFlowiseMessage(message, reportUrl),
+        reportUrl,
+      });
+      setApprovalRequest(null);
+      setReviewerFeedback("");
+      setPhase("complete");
+      setStatus({
+        type: reportUrl ? "success" : "approval",
+        message: reportUrl
+          ? "Human approval was recorded. The approved PDF report is ready."
+          : "The draft was rejected by the human reviewer. No approved PDF report was released.",
+      });
+    } catch (error) {
+      setPhase("awaiting_approval");
+      setStatus({
+        type: "error",
+        message: `The human decision could not be recorded: ${error.message}`,
+      });
+    }
+  }
+
   const phaseIndex = {
     idle: 0,
     preparing: 1,
     ready: 1,
     submitting: 2,
-    complete: 3,
-    error: prepared ? 1 : 0,
+    awaiting_approval: 3,
+    resuming: 3,
+    complete: 4,
+    error: approvalRequest ? 3 : prepared ? 1 : 0,
   }[phase];
 
   return (
@@ -489,7 +609,7 @@ function InputAdapter() {
             "File selected",
             "Validated and prepared",
             "SentinelFlow analysis",
-            "Controlled result",
+            "Human approval and result",
           ].map((label, index) => (
             <div
               className={
@@ -521,7 +641,8 @@ function InputAdapter() {
             onClick={() => {
               setMode("file");
               setPrepared(null);
-              setStatus(null);
+              setPhase("idle");
+              resetResult();
             }}
           >
             Local file
@@ -534,7 +655,8 @@ function InputAdapter() {
             onClick={() => {
               setMode("url");
               setPrepared(null);
-              setStatus(null);
+              setPhase("idle");
+              resetResult();
             }}
           >
             Allowlisted URL
@@ -599,7 +721,9 @@ function InputAdapter() {
                 ? "status-success"
                 : status.type === "progress"
                   ? "status-progress"
-                  : "error-note"
+                  : status.type === "approval"
+                    ? "status-approval"
+                    : "error-note"
             }
             role="status"
             aria-live="polite"
@@ -625,10 +749,18 @@ function InputAdapter() {
                 className="download-button"
                 type="button"
                 onClick={analysePreparedFile}
-                disabled={phase === "submitting"}
+                disabled={[
+                  "submitting",
+                  "awaiting_approval",
+                  "resuming",
+                ].includes(phase)}
               >
                 {phase === "submitting"
                   ? "Analysing securely..."
+                  : phase === "awaiting_approval"
+                    ? "Awaiting human approval"
+                    : phase === "resuming"
+                      ? "Recording decision..."
                   : "Analyse file"}
               </button>
             </div>
@@ -640,6 +772,97 @@ function InputAdapter() {
               prototype uses Flowise without user authentication. Do not submit
               personal, confidential or production security data.
             </p>
+          </section>
+        )}
+
+        {approvalRequest && (
+          <section className="approval-panel">
+            <p className="eyebrow">HUMAN APPROVAL CHECKPOINT</p>
+            <h2>Review the draft before PDF delivery</h2>
+            <p className="approval-intro">
+              The deterministic ledger and independent Supervisor have passed.
+              The report will not be released until a person checks the
+              evidence and records a decision.
+            </p>
+
+            {approvalRequest.draftReport ? (
+              <>
+                <dl className="approval-summary">
+                  <div>
+                    <dt>Case ID</dt>
+                    <dd>{text(approvalRequest.draftReport.case_id)}</dd>
+                  </div>
+                  <div>
+                    <dt>Route</dt>
+                    <dd>{text(approvalRequest.draftReport.route)}</dd>
+                  </div>
+                  <div>
+                    <dt>Decision</dt>
+                    <dd>{text(approvalRequest.draftReport.decision)}</dd>
+                  </div>
+                  <div>
+                    <dt>Severity</dt>
+                    <dd>{text(approvalRequest.draftReport.overall_severity)}</dd>
+                  </div>
+                </dl>
+                <div className="draft-review">
+                  <h3>Executive summary</h3>
+                  <p>
+                    {text(approvalRequest.draftReport.executive_summary)}
+                  </p>
+                  <h3>Draft findings</h3>
+                  {(Array.isArray(approvalRequest.draftReport.findings)
+                    ? approvalRequest.draftReport.findings
+                    : []
+                  ).map((finding, index) => (
+                    <article className="draft-finding" key={`${finding.title}-${index}`}>
+                      <strong>
+                        {index + 1}. {text(finding.title)}
+                      </strong>
+                      <span>
+                        {text(finding.category)} · {text(finding.severity)} ·{" "}
+                        {text(finding.event_ids)} · {text(finding.rule_refs)}
+                      </span>
+                      <p>{text(finding.evidence)}</p>
+                    </article>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="result-message">{approvalRequest.message}</div>
+            )}
+
+            <label className="reviewer-feedback">
+              Reviewer feedback
+              <textarea
+                value={reviewerFeedback}
+                onChange={(event) => setReviewerFeedback(event.target.value)}
+                placeholder="Optional for approval. Required when rejecting the report."
+                rows="4"
+                disabled={phase === "resuming"}
+              />
+            </label>
+
+            <div className="approval-actions">
+              <button
+                className="download-button"
+                type="button"
+                onClick={() => submitHumanDecision("proceed")}
+                disabled={phase === "resuming"}
+              >
+                {phase === "resuming"
+                  ? "Recording decision..."
+                  : "Approve and generate PDF"}
+              </button>
+              <button
+                className="reject-button"
+                type="button"
+                onClick={() => submitHumanDecision("reject")}
+                disabled={phase === "resuming"}
+              >
+                Reject report
+              </button>
+            </div>
           </section>
         )}
 
