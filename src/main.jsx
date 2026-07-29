@@ -272,9 +272,11 @@ function InputAdapter() {
       </header>
 
       <section className="privacy-note">
-        <strong>Local-first processing:</strong> selected files remain in your
-        browser. URL retrieval is restricted to the displayed teaching-data
-        allowlist. No credentials or API keys are used.
+        <strong>Controlled processing:</strong> selected files remain in your
+        browser while they are validated and converted. They are sent to
+        Flowise only if you deliberately attach them in the SentinelFlow Chat.
+        URL retrieval is restricted to the displayed teaching-data allowlist.
+        No credentials or API keys are embedded in this adapter.
       </section>
 
       <article className="adapter-card">
@@ -393,11 +395,21 @@ function InputAdapter() {
             <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
             <ol className="next-instructions">
               <li>Download the validated TXT file.</li>
-              <li>Attach it to a new SentinelFlow Flowise chat.</li>
+              <li>
+                Select <strong>Open SentinelFlow Chat</strong> at the lower
+                right of this page.
+              </li>
+              <li>Attach the downloaded TXT file to a new chat.</li>
               <li>
                 Send: <code>Analyse the attached cybersecurity log file.</code>
               </li>
             </ol>
+            <p className="public-chat-note">
+              <strong>University demonstration access:</strong> the embedded
+              chat currently uses the Flowise prototype without user
+              authentication. Use only simulated or explicitly approved
+              teaching data.
+            </p>
           </section>
         )}
 

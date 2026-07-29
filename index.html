@@ -13,5 +13,64 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script type="module">
+      import Chatbot from "https://cdn.jsdelivr.net/npm/flowise-embed/dist/web.js";
+
+      Chatbot.init({
+        chatflowid: "6b982cfc-bf9f-4078-8432-cfc0bac3634d",
+        apiHost: "https://cloud.flowiseai.com",
+        theme: {
+          button: {
+            backgroundColor: "#064e4f",
+            right: 22,
+            bottom: 22,
+            size: 54,
+            dragAndDrop: true,
+            iconColor: "white",
+            autoWindowOpen: {
+              autoOpen: false,
+              autoOpenOnMobile: false
+            }
+          },
+          tooltip: {
+            showTooltip: true,
+            tooltipMessage: "Open SentinelFlow Chat",
+            tooltipBackgroundColor: "#172033",
+            tooltipTextColor: "#ffffff",
+            tooltipFontSize: 13
+          },
+          chatWindow: {
+            showTitle: true,
+            showAgentMessages: true,
+            title: "SentinelFlow",
+            welcomeMessage:
+              "Upload a supported cybersecurity log file, then send: Analyse the attached cybersecurity log file.",
+            errorMessage:
+              "SentinelFlow could not complete this request. Please verify the file format and try again.",
+            backgroundColor: "#eef3f4",
+            height: 700,
+            width: 420,
+            fontSize: 15,
+            clearChatOnReload: false,
+            textInput: {
+              placeholder: "Describe the log analysis request",
+              backgroundColor: "#ffffff",
+              textColor: "#172033",
+              sendButtonColor: "#064e4f",
+              maxChars: 2000,
+              maxCharsWarningMessage:
+                "The request is too long. Attach the log file and use a short analysis instruction."
+            },
+            footer: {
+              textColor: "#64748b",
+              text: "Supervised prototype by",
+              company: "SentinelFlow",
+              companyLink:
+                "https://kaandoganknd.github.io/sentinelflow-report/?mode=intake"
+            }
+          }
+        }
+      });
+    </script>
   </body>
 </html>

@@ -368,6 +368,17 @@ a {
   color: var(--teal-900);
 }
 
+.public-chat-note {
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #f2cf87;
+  border-radius: 10px;
+  background: #fff8e6;
+  color: #82540b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .adapter-footer {
   padding: 20px 42px;
   background: var(--teal-900);
