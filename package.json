@@ -1,0 +1,21 @@
+{
+  "name": "sentinelflow-report",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "jspdf": "4.2.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "5.1.1",
+    "vite": "7.3.1"
+  }
+}
