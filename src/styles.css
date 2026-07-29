@@ -188,6 +188,44 @@ a {
   line-height: 1.65;
 }
 
+.direct-upload-panel {
+  display: flex;
+  margin: 0 42px 28px;
+  padding: 20px 22px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #96d2af;
+  border-radius: 16px;
+  background: #edfdf3;
+  gap: 24px;
+}
+
+.direct-upload-panel h2,
+.conversion-heading h2 {
+  margin: 5px 0 7px;
+  font-size: 20px;
+}
+
+.direct-upload-panel p:not(.eyebrow) {
+  margin: 0;
+  color: #285e5e;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.direct-upload-panel .download-button {
+  flex: 0 0 auto;
+}
+
+.conversion-heading {
+  margin: 0 42px 14px;
+}
+
+.conversion-heading h2 {
+  margin-bottom: 0;
+  color: var(--ink);
+}
+
 .mode-tabs {
   display: flex;
   margin: 0 42px;
@@ -642,6 +680,11 @@ dd {
     flex-direction: column;
   }
 
+  .direct-upload-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .summary-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -669,8 +712,10 @@ dd {
   .human-decision,
   .adapter-heading,
   .mode-tabs,
-  .adapter-panel,
-  .status-success,
+    .adapter-panel,
+    .direct-upload-panel,
+    .conversion-heading,
+    .status-success,
   .adapter-card > .error-note,
   .prepared-output {
     margin-left: 22px;

@@ -153,6 +153,22 @@ function InputAdapter() {
   const [status, setStatus] = useState(null);
   const [isFetching, setIsFetching] = useState(false);
 
+  function openSentinelFlowChat() {
+    const chatbot = document.querySelector("flowise-chatbot");
+    const launcher = chatbot?.shadowRoot?.querySelector("button");
+
+    if (launcher) {
+      launcher.click();
+      return;
+    }
+
+    setStatus({
+      type: "error",
+      message:
+        "The embedded chat is still loading. Please use Open SentinelFlow Chat at the lower right.",
+    });
+  }
+
   function prepareContent(rawContent, sourceName, sourceType) {
     const checked = validateLogContent(rawContent);
     setPrepared({
@@ -282,12 +298,34 @@ function InputAdapter() {
       <article className="adapter-card">
         <div className="adapter-heading">
           <p className="eyebrow">CONTROLLED INPUT PREPARATION</p>
-          <h1>Prepare a .log file for SentinelFlow</h1>
+          <h1>Submit a cybersecurity log to SentinelFlow</h1>
           <p>
-            Validate a local LOG file or retrieve a text log from an explicitly
-            allowlisted HTTPS location, then download a TXT file accepted by
-            the Flowise prototype.
+            Upload supported files directly, or safely prepare a LOG file or
+            allowlisted online source before analysis.
           </p>
+        </div>
+
+        <section className="direct-upload-panel">
+          <div>
+            <p className="eyebrow">DIRECTLY SUPPORTED FILES</p>
+            <h2>Already have TXT, PDF, CSV or JSON?</h2>
+            <p>
+              No conversion is required. Open SentinelFlow Chat and attach the
+              file directly using the paperclip button.
+            </p>
+          </div>
+          <button
+            className="download-button"
+            type="button"
+            onClick={openSentinelFlowChat}
+          >
+            Open SentinelFlow Chat
+          </button>
+        </section>
+
+        <div className="conversion-heading">
+          <p className="eyebrow">LOG AND ONLINE SOURCE CONVERSION</p>
+          <h2>Prepare a source that Flowise cannot attach directly</h2>
         </div>
 
         <div className="mode-tabs" role="tablist" aria-label="Input source">
