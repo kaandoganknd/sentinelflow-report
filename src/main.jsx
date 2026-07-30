@@ -368,7 +368,7 @@ function parseDraftReport(message) {
 }
 
 function draftEvidenceLines(value) {
-  return exactEvidenceText(value).split("\n");
+  return exactEvidenceText(value).split(/\r?\n| \| /);
 }
 
 function draftControlFacts(report) {
