@@ -346,14 +346,45 @@ function StatusNotice({ status, className = "" }) {
   );
 }
 
+function inferReachedControls(message) {
+  const source = String(message ?? "");
+  const routingDecision = source.match(
+    /\bRouting decision:\s*(SIMPLE|COMPLEX|HUMAN_REVIEW)\b/i,
+  )?.[1];
+  const supervisorStatus = source.match(
+    /\bSupervisor status:\s*(APPROVED|REVISE|HUMAN_REVIEW)\b/i,
+  )?.[1];
+  const routingHumanReview =
+    /SENTINELFLOW\s*[—–-]\s*ROUTING REQUIRES HUMAN REVIEW/i.test(source) ||
+    routingDecision?.toUpperCase() === "HUMAN_REVIEW";
+  const supervisorReviewReached = Boolean(
+    supervisorStatus ||
+      /independent Supervisor did not approve/i.test(source) ||
+      /automated revision limit was reached before the analysis could pass Supervisor review/i.test(
+        source,
+      ),
+  );
+
+  return {
+    orchestratorReached: Boolean(
+      routingDecision || routingHumanReview || supervisorReviewReached,
+    ),
+    specialistReached: supervisorReviewReached,
+    ledgerReached: supervisorReviewReached,
+    supervisorReviewReached,
+  };
+}
+
 function ControlJourney({
   phase,
   prepared,
   approvalRequest,
   controlRecord,
   releaseOutcome,
+  responseMessage,
 }) {
   const isProcessing = phase === "submitting";
+  const inferredControls = inferReachedControls(responseMessage);
   const automatedControlsConfirmed = Boolean(
     approvalRequest ||
       (controlRecord &&
@@ -369,46 +400,47 @@ function ControlJourney({
   ].includes(releaseOutcome);
 
   const processingState = prepared ? "ready" : "pending";
-  const automatedState = isProcessing
-    ? "processing"
-    : automatedControlsConfirmed
-      ? "confirmed"
-      : controlledResponse
-        ? "not-reached"
-        : processingState;
+  const reachedState = (reached) =>
+    isProcessing
+      ? "processing"
+      : reached
+        ? "confirmed"
+        : controlledResponse
+          ? "not-reached"
+          : processingState;
 
   const stages = [
     {
       label: "Orchestrator",
       detail: "Selects SIMPLE, COMPLEX or HUMAN_REVIEW",
-      state: controlledResponse ? "confirmed" : automatedState,
+      state: reachedState(
+        automatedControlsConfirmed ||
+          controlledResponse ||
+          inferredControls.orchestratorReached,
+      ),
     },
     {
       label: "Specialist analysis",
       detail: "Applies the route-specific evidence contract",
-      state: controlledResponse ? "not-reached" : automatedState,
+      state: reachedState(
+        automatedControlsConfirmed || inferredControls.specialistReached,
+      ),
     },
     {
       label: "Ledger validation",
       detail: "Checks event assignment, rules and severity",
-      state: isProcessing
-        ? "processing"
-        : controlRecord?.validation_status === "PASS"
-          ? "confirmed"
-          : controlledResponse
-            ? "not-reached"
-            : processingState,
+      state: reachedState(
+        controlRecord?.validation_status === "PASS" ||
+          inferredControls.ledgerReached,
+      ),
     },
     {
       label: "Supervisor + guard",
       detail: "Independently reviews the analysis contract",
-      state: isProcessing
-        ? "processing"
-        : controlRecord?.supervisor_status === "APPROVED"
-          ? "confirmed"
-          : controlledResponse
-            ? "not-reached"
-            : processingState,
+      state: reachedState(
+        controlRecord?.supervisor_status === "APPROVED" ||
+          inferredControls.supervisorReviewReached,
+      ),
     },
     {
       label: "Human approval",
@@ -1096,6 +1128,9 @@ function InputAdapter() {
           approvalRequest={approvalRequest}
           controlRecord={controlRecord}
           releaseOutcome={releaseOutcome}
+          responseMessage={
+            approvalRequest?.message || analysisResult?.message || ""
+          }
         />
 
         {approvalRequest && (
