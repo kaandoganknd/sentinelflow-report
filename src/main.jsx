@@ -101,6 +101,12 @@ function text(value, fallback = "Not supplied") {
   return fallback;
 }
 
+function exactEvidenceText(value, fallback = "Not supplied") {
+  if (typeof value === "string" && value.length) return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
+}
+
 function percent(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "Not supplied";
@@ -129,23 +135,26 @@ const SUPPORTED_FILES = {
 const REAL_LOG_CASES = [
   {
     id: "SF-REAL-001",
-    category: "SIMPLE",
+    layer: "Simple analyst path",
     title: "Linux session open and close",
     source: "Loghub Linux",
+    documentedResult: "HUMAN_REVIEW",
     url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-001-linux-simple-session.log",
   },
   {
     id: "SF-REAL-002",
-    category: "COMPLEX",
+    layer: "Complex correlation",
     title: "Repeated OpenSSH password failures",
     source: "Loghub OpenSSH",
+    documentedResult: "HUMAN_REVIEW",
     url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-002-openssh-complex-failures.log",
   },
   {
     id: "SF-REAL-003",
-    category: "UNCERTAIN",
+    layer: "Routing boundary",
     title: "Possible OpenSSH break-in evidence",
     source: "Loghub OpenSSH",
+    documentedResult: "HUMAN_REVIEW before specialist analysis",
     url: "https://kaandoganknd.github.io/sentinelflow-report/test-data/loghub/SF-REAL-003-openssh-uncertain-breakin.log",
   },
 ];
@@ -314,6 +323,218 @@ function parseDraftReport(message) {
   }
 }
 
+function StatusNotice({ status, className = "" }) {
+  if (!status) return null;
+
+  const statusClass =
+    status.type === "success"
+      ? "status-success"
+      : status.type === "progress"
+        ? "status-progress"
+        : status.type === "approval"
+          ? "status-approval"
+          : "error-note";
+
+  return (
+    <section
+      className={`status-notice ${statusClass} ${className}`.trim()}
+      role={status.type === "error" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      {status.message}
+    </section>
+  );
+}
+
+function ControlJourney({
+  phase,
+  prepared,
+  approvalRequest,
+  controlRecord,
+  releaseOutcome,
+}) {
+  const isProcessing = phase === "submitting";
+  const automatedControlsConfirmed = Boolean(
+    approvalRequest ||
+      (controlRecord &&
+        controlRecord.validation_status === "PASS" &&
+        controlRecord.supervisor_status === "APPROVED"),
+  );
+  const controlledResponse = releaseOutcome === "controlled_response";
+  const humanDecisionRecorded = [
+    "released",
+    "integrity_blocked",
+    "no_link",
+    "rejected",
+  ].includes(releaseOutcome);
+
+  const processingState = prepared ? "ready" : "pending";
+  const automatedState = isProcessing
+    ? "processing"
+    : automatedControlsConfirmed
+      ? "confirmed"
+      : controlledResponse
+        ? "not-reached"
+        : processingState;
+
+  const stages = [
+    {
+      label: "Orchestrator",
+      detail: "Selects SIMPLE, COMPLEX or HUMAN_REVIEW",
+      state: controlledResponse ? "confirmed" : automatedState,
+    },
+    {
+      label: "Specialist analysis",
+      detail: "Applies the route-specific evidence contract",
+      state: controlledResponse ? "not-reached" : automatedState,
+    },
+    {
+      label: "Ledger validation",
+      detail: "Checks event assignment, rules and severity",
+      state: isProcessing
+        ? "processing"
+        : controlRecord?.validation_status === "PASS"
+          ? "confirmed"
+          : controlledResponse
+            ? "not-reached"
+            : processingState,
+    },
+    {
+      label: "Supervisor + guard",
+      detail: "Independently reviews the analysis contract",
+      state: isProcessing
+        ? "processing"
+        : controlRecord?.supervisor_status === "APPROVED"
+          ? "confirmed"
+          : controlledResponse
+            ? "not-reached"
+            : processingState,
+    },
+    {
+      label: "Human approval",
+      detail: "Retains authority before report delivery",
+      state: approvalRequest
+        ? "current"
+        : releaseOutcome === "rejected"
+          ? "stopped"
+          : humanDecisionRecorded
+            ? "confirmed"
+            : controlledResponse
+              ? "not-reached"
+              : "pending",
+    },
+    {
+      label: "Evidence release gate",
+      detail: "Rechecks canonical evidence before publication",
+      state:
+        releaseOutcome === "released"
+          ? "confirmed"
+          : releaseOutcome === "integrity_blocked" ||
+              releaseOutcome === "no_link"
+            ? "blocked"
+            : releaseOutcome === "rejected"
+              ? "stopped"
+              : controlledResponse
+                ? "not-reached"
+                : "pending",
+    },
+  ];
+
+  const stateLabels = {
+    pending: "Pending",
+    ready: "Ready",
+    processing: "Processing",
+    confirmed: "Confirmed",
+    current: "Current",
+    blocked: "Blocked",
+    stopped: "Stopped",
+    "not-reached": "Not reached",
+  };
+
+  const releaseValue = {
+    released: "RELEASED",
+    integrity_blocked: "BLOCKED",
+    no_link: "NO LINK RETURNED",
+    rejected: "REJECTED",
+    controlled_response: "NOT REACHED",
+  }[releaseOutcome];
+
+  const confirmedFacts = [
+    {
+      label: "Ledger validation",
+      value: controlRecord?.validation_status,
+    },
+    {
+      label: "Supervisor",
+      value: controlRecord?.supervisor_status,
+    },
+    {
+      label: "Human approval",
+      value:
+        controlRecord?.human_approval_required === true
+          ? "REQUIRED"
+          : controlRecord?.human_approval_required === false
+            ? "NOT REQUIRED"
+            : undefined,
+    },
+    {
+      label: "Autonomous remediation",
+      value:
+        controlRecord?.autonomous_remediation_performed === true
+          ? "PERFORMED"
+          : controlRecord?.autonomous_remediation_performed === false
+            ? "NOT PERFORMED"
+            : undefined,
+    },
+    {
+      label: "Report release",
+      value: releaseValue,
+    },
+  ].filter((fact) => fact.value);
+
+  return (
+    <section className="control-journey" aria-labelledby="control-journey-title">
+      <div className="control-journey-heading">
+        <div>
+          <p className="eyebrow">CONTROL JOURNEY</p>
+          <h2 id="control-journey-title">How this case is governed</h2>
+        </div>
+        <p>
+          Flowise returns one response, not a live trace. Processing layers are
+          therefore shown together and marked confirmed only when the response
+          provides evidence.
+        </p>
+      </div>
+
+      <ol className="control-layer-list">
+        {stages.map((stage, index) => (
+          <li className={`control-layer ${stage.state}`} key={stage.label}>
+            <span className="control-layer-index">{index + 1}</span>
+            <div>
+              <strong>{stage.label}</strong>
+              <small>{stage.detail}</small>
+            </div>
+            <span className="control-layer-state">
+              {stateLabels[stage.state]}
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {!!confirmedFacts.length && (
+        <dl className="confirmed-control-facts">
+          {confirmedFacts.map((fact) => (
+            <div key={fact.label}>
+              <dt>{fact.label}</dt>
+              <dd>{fact.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 function InputAdapter() {
   const [mode, setMode] = useState("file");
   const [urlValue, setUrlValue] = useState(DEMO_LOG_URL);
@@ -324,11 +545,15 @@ function InputAdapter() {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [approvalRequest, setApprovalRequest] = useState(null);
   const [reviewerFeedback, setReviewerFeedback] = useState("");
+  const [controlRecord, setControlRecord] = useState(null);
+  const [releaseOutcome, setReleaseOutcome] = useState(null);
 
   function resetResult() {
     setAnalysisResult(null);
     setApprovalRequest(null);
     setReviewerFeedback("");
+    setControlRecord(null);
+    setReleaseOutcome(null);
     setStatus(null);
   }
 
@@ -474,6 +699,8 @@ function InputAdapter() {
     if (!prepared) return;
     setPhase("submitting");
     setAnalysisResult(null);
+    setControlRecord(null);
+    setReleaseOutcome(null);
     setStatus({
       type: "progress",
       message:
@@ -519,13 +746,15 @@ function InputAdapter() {
 
       const result = await response.json();
       const message = flowiseResponseText(result);
+      const draftReport = parseDraftReport(message);
 
       if (hasHumanInputAction(result)) {
         setApprovalRequest({
           sessionId: result.sessionId || sessionId,
           message,
-          draftReport: parseDraftReport(message),
+          draftReport,
         });
+        setControlRecord(draftReport);
         setPhase("awaiting_approval");
         setStatus({
           type: "approval",
@@ -540,6 +769,8 @@ function InputAdapter() {
         message: cleanFlowiseMessage(message, reportUrl),
         reportUrl,
       });
+      setControlRecord(draftReport);
+      setReleaseOutcome(reportUrl ? "released" : "controlled_response");
       setPhase("complete");
       setStatus({
         type: "success",
@@ -654,18 +885,22 @@ function InputAdapter() {
       let statusMessage;
 
       if (type === "reject") {
+        setReleaseOutcome("rejected");
         statusType = "approval";
         statusMessage =
           "The draft was rejected by the human reviewer. No approved PDF report was released.";
       } else if (integrityBlocked) {
+        setReleaseOutcome("integrity_blocked");
         statusType = "error";
         statusMessage =
           "Human approval was recorded, but the deterministic release gate blocked publication because the report evidence did not exactly match the supplied records. No PDF was released.";
       } else if (reportUrl) {
+        setReleaseOutcome("released");
         statusType = "success";
         statusMessage =
           "Human approval was recorded. The approved PDF report is ready.";
       } else {
+        setReleaseOutcome("no_link");
         statusType = "approval";
         statusMessage =
           "Human approval was recorded, but no approved report link was returned. Review the controlled response below.";
@@ -681,22 +916,16 @@ function InputAdapter() {
     }
   }
 
-  const phaseIndex = {
-    idle: 0,
-    preparing: 1,
-    ready: 1,
-    submitting: 2,
-    awaiting_approval: 3,
-    resuming: 3,
-    complete: 4,
-    error: approvalRequest ? 3 : prepared ? 1 : 0,
-  }[phase];
-
   return (
     <main className="page-shell">
       <header className="site-header">
         <div className="brand">
-          <span className="brand-mark">SF</span>
+          <img
+            className="brand-mark"
+            src="./sentinelflow-mark.svg"
+            alt=""
+            aria-hidden="true"
+          />
           <div>
             <p className="eyebrow">SENTINELFLOW</p>
             <p className="brand-subtitle">Unified cybersecurity log intake</p>
@@ -725,29 +954,6 @@ function InputAdapter() {
             background without a second download or upload.
           </p>
         </div>
-
-        <section className="workflow-steps" aria-label="Analysis workflow">
-          {[
-            "File selected",
-            "Validated and prepared",
-            "SentinelFlow analysis",
-            "Human approval and result",
-          ].map((label, index) => (
-            <div
-              className={
-                index < phaseIndex
-                  ? "workflow-step complete"
-                  : index === phaseIndex
-                    ? "workflow-step active"
-                    : "workflow-step"
-              }
-              key={label}
-            >
-              <span>{index + 1}</span>
-              <p>{label}</p>
-            </div>
-          ))}
-        </section>
 
         <div className="conversion-heading">
           <p className="eyebrow">CASE SOURCE</p>
@@ -836,65 +1042,7 @@ function InputAdapter() {
           </section>
         )}
 
-        <section className="real-test-cases">
-          <div>
-            <p className="eyebrow">OPENLY ATTRIBUTED ACADEMIC TEST DATA</p>
-            <h2>Loghub real-log excerpts</h2>
-            <p>
-              Small unchanged excerpts selected for simple, complex and
-              uncertain-path testing. Source lines, preparation and academic-use
-              permission are recorded in the manifest.
-            </p>
-          </div>
-          <div className="real-case-grid">
-            {REAL_LOG_CASES.map((testCase) => (
-              <article key={testCase.id}>
-                <span>{testCase.category}</span>
-                <strong>
-                  {testCase.id} · {testCase.title}
-                </strong>
-                <small>{testCase.source}</small>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode("url");
-                    setUrlValue(testCase.url);
-                    setPrepared(null);
-                    setPhase("idle");
-                    resetResult();
-                  }}
-                >
-                  Use this source
-                </button>
-              </article>
-            ))}
-          </div>
-          <a
-            href="./test-data/loghub/source_manifest.json"
-            target="_blank"
-            rel="noreferrer"
-          >
-            View source, licence and preparation manifest
-          </a>
-        </section>
-
-        {status && (
-          <section
-            className={
-              status.type === "success"
-                ? "status-success"
-                : status.type === "progress"
-                  ? "status-progress"
-                  : status.type === "approval"
-                    ? "status-approval"
-                    : "error-note"
-            }
-            role="status"
-            aria-live="polite"
-          >
-            {status.message}
-          </section>
-        )}
+        {!prepared && <StatusNotice status={status} className="source-status" />}
 
         {prepared && (
           <section className="prepared-output">
@@ -920,7 +1068,7 @@ function InputAdapter() {
                 ].includes(phase)}
               >
                 {phase === "submitting"
-                  ? "Analysing securely..."
+                  ? "Controlled analysis in progress..."
                   : phase === "awaiting_approval"
                     ? "Awaiting human approval"
                     : phase === "resuming"
@@ -928,6 +1076,9 @@ function InputAdapter() {
                   : "Analyse file"}
               </button>
             </div>
+            {!approvalRequest && !analysisResult && (
+              <StatusNotice status={status} />
+            )}
             {prepared.content && (
               <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
             )}
@@ -939,6 +1090,14 @@ function InputAdapter() {
           </section>
         )}
 
+        <ControlJourney
+          phase={phase}
+          prepared={prepared}
+          approvalRequest={approvalRequest}
+          controlRecord={controlRecord}
+          releaseOutcome={releaseOutcome}
+        />
+
         {approvalRequest && (
           <section className="approval-panel">
             <p className="eyebrow">HUMAN APPROVAL CHECKPOINT</p>
@@ -948,6 +1107,7 @@ function InputAdapter() {
               The report will not be released until a person checks the
               evidence and records a decision.
             </p>
+            {status?.type !== "error" && <StatusNotice status={status} />}
 
             {approvalRequest.draftReport ? (
               <>
@@ -987,7 +1147,9 @@ function InputAdapter() {
                         {text(finding.category)} · {text(finding.severity)} ·{" "}
                         {text(finding.event_ids)} · {text(finding.rule_refs)}
                       </span>
-                      <p>{text(finding.evidence)}</p>
+                      <p className="evidence-record evidence-record-compact">
+                        {exactEvidenceText(finding.evidence)}
+                      </p>
                     </article>
                   ))}
                 </div>
@@ -1006,6 +1168,9 @@ function InputAdapter() {
                 disabled={phase === "resuming"}
               />
             </label>
+            {status?.type === "error" && (
+              <StatusNotice status={status} className="feedback-status" />
+            )}
 
             <div className="approval-actions">
               <button
@@ -1042,6 +1207,7 @@ function InputAdapter() {
                 ? "The case passed the automated control gates"
                 : "The case requires review"}
             </h2>
+            <StatusNotice status={status} />
             <div className="result-message">{analysisResult.message}</div>
             {analysisResult.reportUrl && (
               <a
@@ -1055,6 +1221,51 @@ function InputAdapter() {
             )}
           </section>
         )}
+
+        <section className="real-test-cases">
+          <div className="real-test-heading">
+            <div>
+              <p className="eyebrow">ATTRIBUTED ACADEMIC TEST DATA</p>
+              <h2>Verified Loghub excerpts</h2>
+            </div>
+            <a
+              href="./test-data/loghub/source_manifest.json"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Source, licence and preparation manifest
+            </a>
+          </div>
+          <div className="real-case-list">
+            {REAL_LOG_CASES.map((testCase) => (
+              <article key={testCase.id}>
+                <span className="real-case-layer">{testCase.layer}</span>
+                <div className="real-case-identity">
+                  <strong>
+                    {testCase.id} · {testCase.title}
+                  </strong>
+                  <small>{testCase.source}</small>
+                </div>
+                <span className="real-case-result">
+                  <small>Documented result</small>
+                  <strong>{testCase.documentedResult}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("url");
+                    setUrlValue(testCase.url);
+                    setPrepared(null);
+                    setPhase("idle");
+                    resetResult();
+                  }}
+                >
+                  Use this source
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <footer className="adapter-footer">
           This supervised university prototype accepts simulated or approved
@@ -1295,7 +1506,12 @@ function App() {
     <main className="page-shell">
       <header className="site-header">
         <div className="brand">
-          <span className="brand-mark">SF</span>
+          <img
+            className="brand-mark"
+            src="./sentinelflow-mark.svg"
+            alt=""
+            aria-hidden="true"
+          />
           <div>
             <p className="eyebrow">SENTINELFLOW</p>
             <p className="brand-subtitle">
@@ -1425,7 +1641,9 @@ function App() {
                 <dl className="finding-details">
                   <div>
                     <dt>Exact evidence</dt>
-                    <dd>{text(finding.evidence)}</dd>
+                    <dd className="evidence-record">
+                      {exactEvidenceText(finding.evidence)}
+                    </dd>
                   </div>
                   <div>
                     <dt>Assessment</dt>
