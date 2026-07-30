@@ -316,9 +316,28 @@ function parseDraftReport(message) {
 
   for (const fenced of source.matchAll(/```json\s*([\s\S]*?)```/gi)) {
     try {
-      let parsed = JSON.parse(fenced[1]);
+      let candidateText = fenced[1].trim();
+      if (
+        candidateText.length >= 2 &&
+        candidateText.startsWith("`") &&
+        candidateText.endsWith("`") &&
+        !candidateText.startsWith("```")
+      ) {
+        candidateText = candidateText.slice(1, -1).trim();
+      }
+
+      let parsed = JSON.parse(candidateText);
       if (typeof parsed === "string") {
-        parsed = JSON.parse(parsed);
+        let nestedText = parsed.trim();
+        if (
+          nestedText.length >= 2 &&
+          nestedText.startsWith("`") &&
+          nestedText.endsWith("`") &&
+          !nestedText.startsWith("```")
+        ) {
+          nestedText = nestedText.slice(1, -1).trim();
+        }
+        parsed = JSON.parse(nestedText);
       }
       if (parsed && typeof parsed === "object") {
         candidates.push(parsed);
@@ -346,6 +365,65 @@ function parseDraftReport(message) {
   }
 
   return null;
+}
+
+function draftEvidenceLines(value) {
+  return exactEvidenceText(value).split("\n");
+}
+
+function draftControlFacts(report) {
+  const findings = Array.isArray(report?.findings) ? report.findings : [];
+  const eventIds = findings.flatMap((finding) => {
+    if (Array.isArray(finding?.event_ids)) {
+      return finding.event_ids.map((eventId) => String(eventId).trim());
+    }
+    return String(finding?.event_ids ?? "")
+      .split(",")
+      .map((eventId) => eventId.trim())
+      .filter(Boolean);
+  });
+  const uniqueEventIds = new Set(eventIds);
+  const duplicateEventIds = [
+    ...new Set(
+      eventIds.filter(
+        (eventId, index) => eventIds.indexOf(eventId) !== index,
+      ),
+    ),
+  ];
+
+  return [
+    {
+      label: "Report assembly",
+      value: text(report?.report_assembly_status),
+    },
+    {
+      label: "Ledger validation",
+      value: text(report?.validation_status),
+    },
+    {
+      label: "Supervisor",
+      value: text(report?.supervisor_status),
+    },
+    {
+      label: "Draft event IDs",
+      value: `${eventIds.length} listed · ${uniqueEventIds.size} unique`,
+    },
+    {
+      label: "Duplicate event IDs",
+      value: duplicateEventIds.length
+        ? duplicateEventIds.join(",")
+        : "NONE",
+    },
+    {
+      label: "Autonomous remediation",
+      value:
+        report?.autonomous_remediation_performed === false
+          ? "NOT PERFORMED"
+          : report?.autonomous_remediation_performed === true
+            ? "PERFORMED"
+            : "Not supplied",
+    },
+  ];
 }
 
 function StatusNotice({ status, className = "" }) {
@@ -1190,7 +1268,19 @@ function InputAdapter() {
                     <dd>{text(approvalRequest.draftReport.overall_severity)}</dd>
                   </div>
                 </dl>
+                <dl className="draft-control-summary">
+                  {draftControlFacts(approvalRequest.draftReport).map(
+                    (fact) => (
+                      <div key={fact.label}>
+                        <dt>{fact.label}</dt>
+                        <dd>{fact.value}</dd>
+                      </div>
+                    ),
+                  )}
+                </dl>
                 <div className="draft-review">
+                  <h3>Report title</h3>
+                  <p>{text(approvalRequest.draftReport.report_title)}</p>
                   <h3>Executive summary</h3>
                   <p>
                     {text(approvalRequest.draftReport.executive_summary)}
@@ -1208,11 +1298,61 @@ function InputAdapter() {
                         {text(finding.category)} · {text(finding.severity)} ·{" "}
                         {text(finding.event_ids)} · {text(finding.rule_refs)}
                       </span>
-                      <p className="evidence-record evidence-record-compact">
-                        {exactEvidenceText(finding.evidence)}
+                      <p className="draft-field-label">Assessment</p>
+                      <p>{text(finding.assessment)}</p>
+                      <p className="draft-field-label">
+                        Recommended action
                       </p>
+                      <p>{text(finding.recommended_action)}</p>
+                      <p className="draft-field-label">
+                        Canonical evidence — one record per line
+                      </p>
+                      <div className="evidence-record evidence-record-compact evidence-record-list">
+                        {draftEvidenceLines(finding.evidence).map(
+                          (evidenceLine, evidenceIndex) => (
+                            <code
+                              key={`${finding.finding_id || index}-${evidenceIndex}`}
+                            >
+                              {evidenceLine}
+                            </code>
+                          ),
+                        )}
+                      </div>
                     </article>
                   ))}
+                  {Array.isArray(
+                    approvalRequest.draftReport.recommended_next_steps,
+                  ) &&
+                    approvalRequest.draftReport.recommended_next_steps.length >
+                      0 && (
+                      <section className="draft-list">
+                        <h3>Recommended next steps</h3>
+                        <ul>
+                          {approvalRequest.draftReport.recommended_next_steps.map(
+                            (item, index) => (
+                              <li key={`next-step-${index}`}>
+                                {text(item)}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </section>
+                    )}
+                  {Array.isArray(approvalRequest.draftReport.limitations) &&
+                    approvalRequest.draftReport.limitations.length > 0 && (
+                      <section className="draft-list">
+                        <h3>Limitations</h3>
+                        <ul>
+                          {approvalRequest.draftReport.limitations.map(
+                            (item, index) => (
+                              <li key={`limitation-${index}`}>
+                                {text(item)}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </section>
+                    )}
                 </div>
               </>
             ) : (
