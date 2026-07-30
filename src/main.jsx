@@ -282,7 +282,12 @@ function cleanFlowiseMessage(message, reportUrl) {
       /Open the report and select [“"]Download PDF report[”"]:\s*/gi,
       "",
     )
-    .replace(/\[[^\]]+\]\(https:\/\/kaandoganknd\.github\.io\/sentinelflow-report\/#data=[^)]+\)/gi, "")
+    .replace(
+      /\[[^\]]+\]\(https:\/\/kaandoganknd\.github\.io\/sentinelflow-report\/#data=[^)]+\)/gi,
+      "",
+    )
+    .split(reportUrl)
+    .join("")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -640,12 +645,33 @@ function InputAdapter() {
       setApprovalRequest(null);
       setReviewerFeedback("");
       setPhase("complete");
-      setStatus({
-        type: reportUrl ? "success" : "approval",
-        message: reportUrl
-          ? "Human approval was recorded. The approved PDF report is ready."
-          : "The draft was rejected by the human reviewer. No approved PDF report was released.",
-      });
+
+      const integrityBlocked =
+        type === "proceed" &&
+        /REPORT_LINK_NOT_CREATED/i.test(message);
+
+      let statusType;
+      let statusMessage;
+
+      if (type === "reject") {
+        statusType = "approval";
+        statusMessage =
+          "The draft was rejected by the human reviewer. No approved PDF report was released.";
+      } else if (integrityBlocked) {
+        statusType = "error";
+        statusMessage =
+          "Human approval was recorded, but the deterministic release gate blocked publication because the report evidence did not exactly match the supplied records. No PDF was released.";
+      } else if (reportUrl) {
+        statusType = "success";
+        statusMessage =
+          "Human approval was recorded. The approved PDF report is ready.";
+      } else {
+        statusType = "approval";
+        statusMessage =
+          "Human approval was recorded, but no approved report link was returned. Review the controlled response below.";
+      }
+
+      setStatus({ type: statusType, message: statusMessage });
     } catch (error) {
       setPhase("awaiting_approval");
       setStatus({
