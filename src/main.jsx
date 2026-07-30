@@ -312,15 +312,40 @@ function hasHumanInputAction(result) {
 
 function parseDraftReport(message) {
   const source = String(message ?? "");
-  const fenced = source.match(/```json\s*([\s\S]*?)```/i);
-  if (!fenced) return null;
+  const candidates = [];
 
-  try {
-    const parsed = JSON.parse(fenced[1]);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
+  for (const fenced of source.matchAll(/```json\s*([\s\S]*?)```/gi)) {
+    try {
+      let parsed = JSON.parse(fenced[1]);
+      if (typeof parsed === "string") {
+        parsed = JSON.parse(parsed);
+      }
+      if (parsed && typeof parsed === "object") {
+        candidates.push(parsed);
+      }
+    } catch {
+      // Ignore malformed or non-report JSON blocks and continue scanning.
+    }
   }
+
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index];
+    const hasRequiredIdentity = [
+      "case_id",
+      "route",
+      "decision",
+      "overall_severity",
+    ].every(
+      (field) =>
+        typeof candidate[field] === "string" && candidate[field].trim(),
+    );
+
+    if (hasRequiredIdentity && Array.isArray(candidate.findings)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function StatusNotice({ status, className = "" }) {
@@ -789,9 +814,10 @@ function InputAdapter() {
         setControlRecord(draftReport);
         setPhase("awaiting_approval");
         setStatus({
-          type: "approval",
-          message:
-            "Automated validation and Supervisor review passed. A human reviewer must now approve or reject the draft before PDF delivery.",
+          type: draftReport ? "approval" : "error",
+          message: draftReport
+            ? "Automated validation and Supervisor review passed. A human reviewer must now approve or reject the draft before PDF delivery."
+            : "Human approval is unavailable because the response did not contain the complete deterministic report payload. The draft can be rejected, but it cannot be approved or released from this page.",
         });
         return;
       }
@@ -1212,7 +1238,9 @@ function InputAdapter() {
                 className="download-button"
                 type="button"
                 onClick={() => submitHumanDecision("proceed")}
-                disabled={phase === "resuming"}
+                disabled={
+                  phase === "resuming" || !approvalRequest.draftReport
+                }
               >
                 {phase === "resuming"
                   ? "Recording decision..."
