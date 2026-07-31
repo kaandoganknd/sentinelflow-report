@@ -1,0 +1,78 @@
+{
+  "observation_version": "1.0",
+  "observation_set": "Current-build intake-path executions",
+  "observed_date": "2026-07-31",
+  "method": "The three attributed Loghub excerpts were executed sequentially through the SentinelFlow web intake using file upload. Identifiers and observed outcomes were copied from the resulting Flowise executions.",
+  "fingerprint_note": "The prototype FNV-1a fingerprint is byte-sensitive. Line endings and a trailing newline can change the fingerprint even when the visible log records appear identical.",
+  "cases": [
+    {
+      "test_id": "SF-REAL-001",
+      "executed": "31 July 2026, 01:38",
+      "flowise_session_id": "sf-web-514b33cf-9bb4-46f0-a5f2-7f0aa9f52f76",
+      "case_id": "SF-20260731003845-9242AEBA",
+      "content_hash": "fnv1a32:9242aeba",
+      "source_name": "SF-REAL-001-linux-simple-session.txt",
+      "source_type": "UPLOADED_TXT",
+      "event_count": 2,
+      "original_character_count": 161,
+      "received_character_count": 342,
+      "normalisation_notes": [
+        "FLOWISE_FILE_WRAPPER_REMOVED",
+        "FLOWISE_BASE64_FILE_DECODED",
+        "TEXT_LOG_FORMAT_PARSED: AUTH_SYSLOG"
+      ],
+      "parse_warnings": [],
+      "observed_route": "SIMPLE",
+      "observed_control_outcome": "HUMAN_REVIEW",
+      "specialist_decision": "HUMAN_REVIEW",
+      "release_status": "APPROVED_AND_RELEASED",
+      "trace_result": "Reached PDF Link Builder after specialist analysis, deterministic controls and human approval."
+    },
+    {
+      "test_id": "SF-REAL-002",
+      "executed": "31 July 2026, 01:40",
+      "flowise_session_id": "sf-web-8540ca7d-afc2-45e5-b62e-6822c3dbd361",
+      "case_id": "SF-20260731004020-48B2DE4C",
+      "content_hash": "fnv1a32:48b2de4c",
+      "source_name": "SF-REAL-002-openssh-complex-failures.txt",
+      "source_type": "UPLOADED_TXT",
+      "event_count": 5,
+      "original_character_count": 470,
+      "received_character_count": 758,
+      "normalisation_notes": [
+        "FLOWISE_FILE_WRAPPER_REMOVED",
+        "FLOWISE_BASE64_FILE_DECODED",
+        "TEXT_LOG_FORMAT_PARSED: AUTH_SYSLOG"
+      ],
+      "parse_warnings": [],
+      "observed_route": "COMPLEX",
+      "observed_control_outcome": "HUMAN_REVIEW",
+      "specialist_decision": "HUMAN_REVIEW",
+      "release_status": "APPROVED_AND_RELEASED",
+      "trace_result": "Reached PDF Link Builder after specialist analysis, deterministic controls and human approval."
+    },
+    {
+      "test_id": "SF-REAL-003",
+      "executed": "31 July 2026, 01:42",
+      "flowise_session_id": "sf-web-d7b99c99-4cae-40ad-bfaa-17a470ac2c0c",
+      "case_id": "SF-20260731004250-A9DA54D0",
+      "content_hash": "fnv1a32:a9da54d0",
+      "source_name": "SF-REAL-003-openssh-uncertain-breakin.txt",
+      "source_type": "UPLOADED_TXT",
+      "event_count": 5,
+      "original_character_count": 563,
+      "received_character_count": 883,
+      "normalisation_notes": [
+        "FLOWISE_FILE_WRAPPER_REMOVED",
+        "FLOWISE_BASE64_FILE_DECODED",
+        "TEXT_LOG_FORMAT_PARSED: AUTH_SYSLOG"
+      ],
+      "parse_warnings": [],
+      "observed_route": "HUMAN_REVIEW",
+      "observed_control_outcome": "HUMAN_REVIEW_AT_ROUTING_BOUNDARY",
+      "specialist_decision": "NOT_REACHED",
+      "release_status": "NO_REPORT_PRODUCED",
+      "trace_result": "The routing boundary halted automated analysis. No specialist ALERT or NO_ALERT decision was produced."
+    }
+  ]
+}

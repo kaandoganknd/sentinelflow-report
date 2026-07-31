@@ -1546,9 +1546,7 @@ function InputAdapter() {
               <h2>Verified Loghub excerpts</h2>
             </div>
             <a
-              href="./test-data/loghub/source_manifest.json"
-              target="_blank"
-              rel="noreferrer"
+              href="?mode=manifest"
             >
               Source, licence and preparation manifest
             </a>
@@ -1588,6 +1586,360 @@ function InputAdapter() {
           This supervised university prototype accepts simulated or approved
           teaching data only. Human approval remains required and no autonomous
           remediation is performed.
+        </footer>
+      </article>
+    </main>
+  );
+}
+
+function SourceManifestPage() {
+  const [manifest, setManifest] = useState(null);
+  const [observations, setObservations] = useState(null);
+  const [manifestError, setManifestError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([
+      fetch("./test-data/loghub/source_manifest.json").then((response) => {
+        if (!response.ok) {
+          throw new Error(`Prediction manifest returned HTTP ${response.status}`);
+        }
+        return response.json();
+      }),
+      fetch("./test-data/loghub/source_observations.json").then((response) => {
+        if (!response.ok) {
+          throw new Error(`Observation record returned HTTP ${response.status}`);
+        }
+        return response.json();
+      }),
+    ])
+      .then(([predictionManifest, observationRecord]) => {
+        if (!active) return;
+        setManifest(predictionManifest);
+        setObservations(observationRecord);
+      })
+      .catch((error) => {
+        if (active) setManifestError(error.message);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const observedCases = Array.isArray(observations?.cases)
+    ? observations.cases
+    : [];
+  const observationByTestId = new Map(
+    observedCases.map((item) => [item.test_id, item]),
+  );
+  const predictedCases = Array.isArray(manifest?.cases) ? manifest.cases : [];
+
+  return (
+    <main className="page-shell">
+      <header className="site-header">
+        <BrandLink subtitle="Attributed academic test evidence" />
+        <a className="secondary-button" href="?mode=intake">
+          Return to log intake
+        </a>
+      </header>
+
+      <article className="manifest-card">
+        <header className="manifest-heading">
+          <p className="eyebrow">SOURCE AND EXECUTION EVIDENCE</p>
+          <h1>Loghub test manifest</h1>
+          <p>
+            Source attribution and pre-specified expectations are shown beside
+            one contemporaneous set of observed SentinelFlow executions.
+          </p>
+        </header>
+
+        {manifestError && (
+          <section className="error-note manifest-notice">
+            The evidence records could not be loaded: {manifestError}
+          </section>
+        )}
+
+        {!manifest && !manifestError && (
+          <section className="status-progress manifest-notice" role="status">
+            Loading the evidence records…
+          </section>
+        )}
+
+        {manifest && observations && (
+          <>
+            <section className="manifest-section">
+              <div className="manifest-section-heading">
+                <div>
+                  <p className="eyebrow">ATTRIBUTION AND PERMISSION</p>
+                  <h2>Dataset record</h2>
+                </div>
+                <span>Manifest version {text(manifest.manifest_version)}</span>
+              </div>
+              <dl className="manifest-facts">
+                <div>
+                  <dt>Publisher</dt>
+                  <dd>{text(manifest.publisher)}</dd>
+                </div>
+                <div>
+                  <dt>Repository</dt>
+                  <dd>
+                    <a href={manifest.repository} target="_blank" rel="noreferrer">
+                      LogPAI / Loghub repository
+                    </a>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Licence notice</dt>
+                  <dd>
+                    <a href={manifest.licence_url} target="_blank" rel="noreferrer">
+                      View the repository licence
+                    </a>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Prepared for</dt>
+                  <dd>{text(manifest.prepared_for)}</dd>
+                </div>
+              </dl>
+              <div className="manifest-prose">
+                <h3>Permission statement</h3>
+                <p>{text(manifest.permission)}</p>
+                <h3>Citation</h3>
+                <p>{text(manifest.citation)}</p>
+                <h3>Privacy note</h3>
+                <p>{text(manifest.privacy_note)}</p>
+              </div>
+            </section>
+
+            <section className="manifest-section">
+              <p className="eyebrow">PREPARATION METHOD</p>
+              <h2>Evidence handling</h2>
+              <p className="manifest-body">{text(manifest.preparation)}</p>
+              <p className="manifest-caveat">
+                The expectations below were committed before execution, but
+                were not formally preregistered. The original JSON remains
+                available unchanged. Its legacy category{" "}
+                <code>UNCERTAIN</code> is presented here using the current
+                interface label <strong>Routing boundary</strong>.
+              </p>
+            </section>
+
+            <section className="manifest-section">
+              <div className="manifest-section-heading">
+                <div>
+                  <p className="eyebrow">PREDICTION VERSUS OBSERVATION</p>
+                  <h2>Three attributed test cases</h2>
+                </div>
+                <span>{text(observations.observation_set)}</span>
+              </div>
+
+              <div className="manifest-case-list">
+                {predictedCases.map((testCase) => {
+                  const observation = observationByTestId.get(testCase.test_id);
+                  const currentCase = REAL_LOG_CASES.find(
+                    (item) => item.id === testCase.test_id,
+                  );
+                  const routeMatched =
+                    observation?.observed_route === testCase.expected_route;
+                  const specialistReached =
+                    observation?.specialist_decision !== "NOT_REACHED";
+                  const decisionMatched =
+                    specialistReached &&
+                    observation?.specialist_decision ===
+                      testCase.expected_decision;
+                  const resultLabel = !observation
+                    ? "Observation unavailable"
+                    : routeMatched && decisionMatched
+                      ? "Prediction matched"
+                      : routeMatched && !specialistReached
+                        ? "Route matched · specialist decision not reached"
+                        : "Prediction differed";
+
+                  return (
+                    <article
+                      className="manifest-case"
+                      key={testCase.test_id}
+                    >
+                      <div className="manifest-case-title">
+                        <div>
+                          <p className="eyebrow">
+                            {currentCase?.layer ||
+                              text(testCase.category, "Test case")}
+                          </p>
+                          <h3>
+                            {testCase.test_id} ·{" "}
+                            {currentCase?.title || testCase.file}
+                          </h3>
+                        </div>
+                        <span
+                          className={`comparison-status ${
+                            routeMatched &&
+                            (decisionMatched || !specialistReached)
+                              ? "matched"
+                              : "different"
+                          }`}
+                        >
+                          {resultLabel}
+                        </span>
+                      </div>
+
+                      <dl className="prediction-grid">
+                        <div>
+                          <dt>Expected route</dt>
+                          <dd>{text(testCase.expected_route)}</dd>
+                        </div>
+                        <div>
+                          <dt>Observed route</dt>
+                          <dd>{text(observation?.observed_route)}</dd>
+                        </div>
+                        <div>
+                          <dt>Expected decision</dt>
+                          <dd>{text(testCase.expected_decision)}</dd>
+                        </div>
+                        <div>
+                          <dt>Observed specialist decision</dt>
+                          <dd>
+                            {specialistReached
+                              ? text(observation?.specialist_decision)
+                              : "Not reached — routing boundary halted automated analysis"}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="manifest-case-columns">
+                        <section>
+                          <h4>Source evidence</h4>
+                          <dl className="manifest-detail-list">
+                            <div>
+                              <dt>Dataset</dt>
+                              <dd>{text(testCase.dataset)}</dd>
+                            </div>
+                            <div>
+                              <dt>Source file and lines</dt>
+                              <dd>
+                                {text(testCase.source_file)} ·{" "}
+                                {text(testCase.source_lines)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Source</dt>
+                              <dd>
+                                <a
+                                  href={testCase.source_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Open the attributed source file
+                                </a>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Expected event count</dt>
+                              <dd>{text(testCase.expected_event_count)}</dd>
+                            </div>
+                          </dl>
+                          <p>{text(testCase.expected_reason)}</p>
+                        </section>
+
+                        <section>
+                          <h4>Observed execution</h4>
+                          <dl className="manifest-detail-list">
+                            <div>
+                              <dt>Executed</dt>
+                              <dd>{text(observation?.executed)}</dd>
+                            </div>
+                            <div>
+                              <dt>Case ID</dt>
+                              <dd>
+                                <code>{text(observation?.case_id)}</code>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Flowise session</dt>
+                              <dd>
+                                <code>
+                                  {text(observation?.flowise_session_id)}
+                                </code>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Input fingerprint</dt>
+                              <dd>
+                                <code>{text(observation?.content_hash)}</code>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Event and character counts</dt>
+                              <dd>
+                                {text(observation?.event_count)} events ·{" "}
+                                {text(observation?.original_character_count)}{" "}
+                                original characters ·{" "}
+                                {text(observation?.received_character_count)}{" "}
+                                received
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Source as received</dt>
+                              <dd>
+                                {text(observation?.source_name)} ·{" "}
+                                {text(observation?.source_type)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Parse warnings</dt>
+                              <dd>
+                                {Array.isArray(observation?.parse_warnings) &&
+                                observation.parse_warnings.length
+                                  ? observation.parse_warnings.join(" · ")
+                                  : "None"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Release outcome</dt>
+                              <dd>{text(observation?.release_status)}</dd>
+                            </div>
+                          </dl>
+                          <p>{text(observation?.trace_result)}</p>
+                        </section>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="manifest-section manifest-technical-note">
+              <p className="eyebrow">INTERPRETATION NOTE</p>
+              <h2>Fingerprint sensitivity</h2>
+              <p>{text(observations.fingerprint_note)}</p>
+              <div className="manifest-downloads">
+                <a
+                  className="secondary-button"
+                  href="./test-data/loghub/source_manifest.json"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Original prediction JSON
+                </a>
+                <a
+                  className="secondary-button"
+                  href="./test-data/loghub/source_observations.json"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Observed execution JSON
+                </a>
+              </div>
+            </section>
+          </>
+        )}
+
+        <footer className="adapter-footer">
+          These excerpts are approved academic test evidence, not live
+          operational intelligence. SentinelFlow remains human supervised and
+          performs no autonomous remediation.
         </footer>
       </article>
     </main>
@@ -2076,7 +2428,9 @@ function App() {
 
 function RootApp() {
   const mode = new URLSearchParams(window.location.search).get("mode");
-  return mode === "intake" ? <InputAdapter /> : <App />;
+  if (mode === "intake") return <InputAdapter />;
+  if (mode === "manifest") return <SourceManifestPage />;
+  return <App />;
 }
 
 createRoot(document.getElementById("root")).render(
