@@ -858,6 +858,48 @@ a {
   font-weight: 750;
 }
 
+.approval-source-review {
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid #d7e6e5;
+  border-radius: 12px;
+  background: white;
+}
+
+.approval-source-review h3 {
+  margin: 0 0 11px;
+  font-size: 14px;
+}
+
+.approval-source-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+  gap: 1px;
+}
+
+.approval-source-summary > div {
+  min-width: 0;
+  padding: 11px 12px;
+  background: #f2f7f7;
+}
+
+.approval-source-summary dt {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.approval-source-summary dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .draft-review {
   padding: 17px;
   border: 1px solid #ead8af;
@@ -1011,6 +1053,17 @@ a {
   display: flex;
   margin-top: 16px;
   gap: 10px;
+}
+
+.approval-release-boundary {
+  margin: 16px 0 0;
+  padding: 11px 13px;
+  border-left: 3px solid #b38212;
+  background: #fff4d8;
+  color: #6f5519;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.55;
 }
 
 .reject-button {
@@ -1291,6 +1344,14 @@ a {
   padding-bottom: 32px;
 }
 
+.manifest-machine-note {
+  margin-top: 14px !important;
+  padding: 11px 13px;
+  border: 1px solid #cbdad9;
+  border-radius: 9px;
+  background: #f7fafb;
+}
+
 .manifest-downloads {
   display: flex;
   margin-top: 18px;
@@ -1417,6 +1478,10 @@ dd {
   padding: 12px;
   border-radius: 7px;
   background: #f2f7f7;
+}
+
+.source-record .source-record-wide {
+  grid-column: 1 / -1;
 }
 
 .source-record dd {
@@ -1769,6 +1834,7 @@ dd {
 
   .approval-summary,
   .draft-control-summary,
+  .approval-source-summary,
   .approval-actions {
     grid-template-columns: 1fr;
   }

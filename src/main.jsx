@@ -560,7 +560,8 @@ function ControlJourney({
     },
     {
       label: "Supervisor + guard",
-      detail: "Independently reviews the analysis contract",
+      detail:
+        "Supervisor reviews; the deterministic guard enforces the contract.",
       state: reachedState(
         controlRecord?.supervisor_status === "APPROVED" ||
           inferredControls.supervisorReviewReached,
@@ -1387,6 +1388,29 @@ function InputAdapter() {
                     ),
                   )}
                 </dl>
+                <section className="approval-source-review">
+                  <h3>Source under review</h3>
+                  <dl className="approval-source-summary">
+                    <div>
+                      <dt>Filename</dt>
+                      <dd>{text(prepared?.sourceName)}</dd>
+                    </div>
+                    <div>
+                      <dt>Input type</dt>
+                      <dd>{text(prepared?.sourceType)}</dd>
+                    </div>
+                    <div>
+                      <dt>Source reference</dt>
+                      <dd>{text(prepared?.sourceReference)}</dd>
+                    </div>
+                    <div>
+                      <dt>Input fingerprint (prototype)</dt>
+                      <dd>
+                        {text(approvalRequest.draftReport.content_hash)}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
                 <div className="draft-review">
                   <h3>Report title</h3>
                   <p>{text(approvalRequest.draftReport.report_title)}</p>
@@ -1487,6 +1511,10 @@ function InputAdapter() {
               <StatusNotice status={status} className="feedback-status" />
             )}
 
+            <p className="approval-release-boundary">
+              Approval releases this report only; it does not authorise
+              operational remediation.
+            </p>
             <div className="approval-actions">
               <button
                 className="download-button"
@@ -1914,6 +1942,12 @@ function SourceManifestPage() {
               <p className="eyebrow">INTERPRETATION NOTE</p>
               <h2>Fingerprint sensitivity</h2>
               <p>{text(observations.fingerprint_note)}</p>
+              <p className="manifest-machine-note">
+                The underlying records are provided for independent
+                verification. They are machine-readable JSON rather than
+                formatted pages; the key attribution, prediction and execution
+                values are presented above.
+              </p>
               <div className="manifest-downloads">
                 <a
                   className="secondary-button"
@@ -2263,6 +2297,10 @@ function App() {
               <dt>Source reference</dt>
               <dd>{text(report.source_reference)}</dd>
             </div>
+            <div className="source-record-wide">
+              <dt>Input fingerprint (prototype)</dt>
+              <dd>{text(report.content_hash)}</dd>
+            </div>
           </dl>
         </section>
 
@@ -2314,7 +2352,7 @@ function App() {
                     <dd>{text(finding.assessment)}</dd>
                   </div>
                   <div>
-                    <dt>Human-approved response</dt>
+                    <dt>Recommended response in approved report</dt>
                     <dd>{text(finding.recommended_action)}</dd>
                   </div>
                 </dl>
@@ -2339,6 +2377,12 @@ function App() {
           <section className="report-section compact">
             <h2>Independent controls</h2>
             <dl className="control-list">
+              <div>
+                <dt>Report assembly</dt>
+                <dd>
+                  {text(report.report_assembly_status, "Not recorded")}
+                </dd>
+              </div>
               <div>
                 <dt>Ledger validation</dt>
                 <dd>{text(report.validation_status)}</dd>
@@ -2408,7 +2452,9 @@ function App() {
               Report decision time:{" "}
               {text(report.report_approved_at, "Not recorded")}
             </span>
-            <span>Operational authorisation and analyst name</span>
+            <span>
+              Operational authorisation: Not recorded in this report
+            </span>
           </div>
         </section>
 
