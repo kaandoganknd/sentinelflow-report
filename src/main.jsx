@@ -117,6 +117,27 @@ function severityClass(value) {
   return `severity severity-${text(value, "none").toLowerCase()}`;
 }
 
+function BrandLink({ subtitle }) {
+  return (
+    <a
+      className="brand brand-link"
+      href="?mode=intake"
+      aria-label="SentinelFlow log intake"
+    >
+      <img
+        className="brand-mark"
+        src="./sentinelflow-mark.svg"
+        alt=""
+        aria-hidden="true"
+      />
+      <div>
+        <p className="eyebrow">SENTINELFLOW</p>
+        <p className="brand-subtitle">{subtitle}</p>
+      </div>
+    </a>
+  );
+}
+
 const MAX_INPUT_BYTES = 2_000_000;
 const MAX_INPUT_CHARACTERS = 40_000;
 const MAX_INPUT_EVENTS = 500;
@@ -682,6 +703,12 @@ function InputAdapter() {
   const [reviewerFeedback, setReviewerFeedback] = useState("");
   const [controlRecord, setControlRecord] = useState(null);
   const [releaseOutcome, setReleaseOutcome] = useState(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const intakeLocked = [
+    "submitting",
+    "awaiting_approval",
+    "resuming",
+  ].includes(phase);
 
   function resetResult() {
     setAnalysisResult(null);
@@ -719,8 +746,8 @@ function InputAdapter() {
     });
   }
 
-  async function handleFile(event) {
-    const file = event.target.files?.[0];
+  async function prepareSelectedFile(file) {
+    if (intakeLocked) return;
     setPrepared(null);
     resetResult();
     if (!file) return;
@@ -772,6 +799,45 @@ function InputAdapter() {
       setPhase("error");
       setStatus({ type: "error", message: error.message });
     }
+  }
+
+  async function handleFile(event) {
+    const files = event.target.files;
+    const file = files?.[0];
+    event.target.value = "";
+
+    if (files?.length > 1) {
+      setPrepared(null);
+      resetResult();
+      setPhase("error");
+      setStatus({
+        type: "error",
+        message: "Select one case file at a time.",
+      });
+      return;
+    }
+
+    await prepareSelectedFile(file);
+  }
+
+  async function handleFileDrop(event) {
+    event.preventDefault();
+    setIsDraggingFile(false);
+    if (intakeLocked) return;
+    const files = event.dataTransfer.files;
+
+    if (files.length !== 1) {
+      setPrepared(null);
+      resetResult();
+      setPhase("error");
+      setStatus({
+        type: "error",
+        message: "Drop one LOG, TXT, PDF, CSV or JSON case file.",
+      });
+      return;
+    }
+
+    await prepareSelectedFile(files[0]);
   }
 
   async function handleUrl(event) {
@@ -1055,18 +1121,7 @@ function InputAdapter() {
   return (
     <main className="page-shell">
       <header className="site-header">
-        <div className="brand">
-          <img
-            className="brand-mark"
-            src="./sentinelflow-mark.svg"
-            alt=""
-            aria-hidden="true"
-          />
-          <div>
-            <p className="eyebrow">SENTINELFLOW</p>
-            <p className="brand-subtitle">Unified cybersecurity log intake</p>
-          </div>
-        </div>
+        <BrandLink subtitle="Unified cybersecurity log intake" />
         <a className="secondary-button" href="./">
           Return to report viewer
         </a>
@@ -1083,7 +1138,7 @@ function InputAdapter() {
       <article className="adapter-card">
         <div className="adapter-heading">
           <p className="eyebrow">ONE UPLOAD · ONE CONTROLLED WORKFLOW</p>
-          <h1>Upload once. SentinelFlow handles the rest.</h1>
+          <h1>Structured evidence. Human-controlled decisions.</h1>
           <p>
             Submit one LOG, TXT, PDF, CSV or JSON case. Required conversion,
             analysis, evidence checks and report preparation happen in the
@@ -1129,9 +1184,34 @@ function InputAdapter() {
 
         {mode === "file" ? (
           <section className="adapter-panel" role="tabpanel">
-            <label className="file-drop">
+            <label
+              className={`file-drop${isDraggingFile ? " is-dragging" : ""}${
+                intakeLocked ? " is-locked" : ""
+              }`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (intakeLocked) return;
+                setIsDraggingFile(true);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (intakeLocked) return;
+                event.dataTransfer.dropEffect = "copy";
+                setIsDraggingFile(true);
+              }}
+              onDragLeave={(event) => {
+                const nextTarget = event.relatedTarget;
+                if (
+                  !(nextTarget instanceof Node) ||
+                  !event.currentTarget.contains(nextTarget)
+                ) {
+                  setIsDraggingFile(false);
+                }
+              }}
+              onDrop={handleFileDrop}
+            >
               <span className="file-drop-title">
-                Choose a LOG, TXT, PDF, CSV or JSON file
+                Choose or drop a LOG, TXT, PDF, CSV or JSON file
               </span>
               <span>
                 One case per file · Maximum{" "}
@@ -1141,6 +1221,7 @@ function InputAdapter() {
                 type="file"
                 accept=".log,.txt,.pdf,.csv,.json,text/plain,text/csv,application/pdf,application/json"
                 onChange={handleFile}
+                disabled={intakeLocked}
               />
             </label>
           </section>
@@ -1226,6 +1307,23 @@ function InputAdapter() {
           </section>
         )}
 
+        {["submitting", "resuming"].includes(phase) && (
+          <div className="analysis-activity" role="status" aria-live="polite">
+            <span className="activity-spinner" aria-hidden="true" />
+            <div>
+              <strong>
+                {phase === "resuming"
+                  ? "Recording the human decision"
+                  : "Controlled analysis request in progress"}
+              </strong>
+              <span>
+                SentinelFlow returns a completed response rather than a live
+                node-by-node trace. Keep this page open.
+              </span>
+            </div>
+          </div>
+        )}
+
         <ControlJourney
           phase={phase}
           prepared={prepared}
@@ -1265,7 +1363,18 @@ function InputAdapter() {
                   </div>
                   <div>
                     <dt>Severity</dt>
-                    <dd>{text(approvalRequest.draftReport.overall_severity)}</dd>
+                    <dd>
+                      <span
+                        className={severityClass(
+                          approvalRequest.draftReport.overall_severity,
+                        )}
+                      >
+                        {text(
+                          approvalRequest.draftReport.overall_severity,
+                          "UNKNOWN",
+                        )}
+                      </span>
+                    </dd>
                   </div>
                 </dl>
                 <dl className="draft-control-summary">
@@ -1291,12 +1400,17 @@ function InputAdapter() {
                     : []
                   ).map((finding, index) => (
                     <article className="draft-finding" key={`${finding.title}-${index}`}>
-                      <strong>
-                        {index + 1}. {text(finding.title)}
-                      </strong>
+                      <div className="draft-finding-heading">
+                        <strong>
+                          {index + 1}. {text(finding.title)}
+                        </strong>
+                        <span className={severityClass(finding.severity)}>
+                          {text(finding.severity, "UNKNOWN")}
+                        </span>
+                      </div>
                       <span>
-                        {text(finding.category)} · {text(finding.severity)} ·{" "}
-                        {text(finding.event_ids)} · {text(finding.rule_refs)}
+                        {text(finding.category)} · {text(finding.event_ids)} ·{" "}
+                        {text(finding.rule_refs)}
                       </span>
                       <p className="draft-field-label">Assessment</p>
                       <p>{text(finding.assessment)}</p>
@@ -1708,20 +1822,7 @@ function App() {
   return (
     <main className="page-shell">
       <header className="site-header">
-        <div className="brand">
-          <img
-            className="brand-mark"
-            src="./sentinelflow-mark.svg"
-            alt=""
-            aria-hidden="true"
-          />
-          <div>
-            <p className="eyebrow">SENTINELFLOW</p>
-            <p className="brand-subtitle">
-              Human-supervised cybersecurity triage
-            </p>
-          </div>
-        </div>
+        <BrandLink subtitle="Human-supervised cybersecurity triage" />
         <div className="header-actions">
           <a className="secondary-button" href="?mode=intake">
             Analyse a log file
@@ -1844,8 +1945,16 @@ function App() {
                 <dl className="finding-details">
                   <div>
                     <dt>Exact evidence</dt>
-                    <dd className="evidence-record">
-                      {exactEvidenceText(finding.evidence)}
+                    <dd className="evidence-record evidence-record-list">
+                      {draftEvidenceLines(finding.evidence).map(
+                        (evidenceLine, evidenceIndex) => (
+                          <code
+                            key={`${finding.finding_id || index}-${evidenceIndex}`}
+                          >
+                            {evidenceLine}
+                          </code>
+                        ),
+                      )}
                     </dd>
                   </div>
                   <div>
