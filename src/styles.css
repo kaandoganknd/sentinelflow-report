@@ -259,6 +259,18 @@ a {
   line-height: 1.55;
 }
 
+.control-journey-waiting {
+  margin: 18px 0 0;
+  padding: 13px 14px;
+  border: 1px solid #cbdad9;
+  border-radius: 9px;
+  background: white;
+  color: #476567;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
 .control-layer-list {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -321,18 +333,11 @@ a {
   text-transform: uppercase;
 }
 
-.control-layer.processing {
-  border-color: #8fb9b7;
-  background: #f0f9f8;
-}
-
-.control-layer.processing .control-layer-index,
 .control-layer.current .control-layer-index {
   background: var(--teal-700);
   color: white;
 }
 
-.control-layer.processing .control-layer-state,
 .control-layer.current .control-layer-state {
   background: var(--teal-100);
   color: var(--teal-900);
@@ -750,6 +755,69 @@ a {
   color: #d9f3ec;
   font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre;
+}
+
+.source-preview {
+  margin-top: 18px;
+}
+
+.source-preview-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.source-preview-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.source-preview-heading span {
+  color: var(--teal-700);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.source-preview pre {
+  margin: 10px 0;
+}
+
+.source-preview-note,
+.pdf-preview-note p {
+  margin: 0;
+  color: #476567;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.pdf-preview-note {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #cbdad9;
+  border-radius: 10px;
+  background: #f7fafb;
+}
+
+.pdf-preview-note > div {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  gap: 12px;
+}
+
+.pdf-preview-note strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.pdf-preview-note span {
+  flex: 0 0 auto;
+  color: var(--teal-700);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .next-instructions {
@@ -1800,6 +1868,13 @@ dd {
 
   .control-journey {
     padding: 16px;
+  }
+
+  .source-preview-heading,
+  .pdf-preview-note > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .real-case-list article {

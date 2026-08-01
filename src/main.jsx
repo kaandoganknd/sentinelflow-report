@@ -246,6 +246,22 @@ function validateLogContent(value) {
   return { content: normalised, eventCount };
 }
 
+function buildPhysicalLinePreview(value) {
+  const physicalLines = String(value ?? "").split(/\r\n|\n|\r/);
+  return {
+    previewContent: physicalLines.slice(0, 30).join("\n"),
+    nonEmptyPhysicalLineCount: physicalLines.filter(
+      (line) => line.trim().length > 0,
+    ).length,
+  };
+}
+
+function formatFileSize(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return "Size not supplied";
+  return `${bytes.toLocaleString()} bytes`;
+}
+
 function getFileExtension(name) {
   return String(name ?? "")
     .split(".")
@@ -525,13 +541,11 @@ function ControlJourney({
 
   const processingState = prepared ? "ready" : "pending";
   const reachedState = (reached) =>
-    isProcessing
-      ? "processing"
-      : reached
-        ? "confirmed"
-        : controlledResponse
-          ? "not-reached"
-          : processingState;
+    reached
+      ? "confirmed"
+      : controlledResponse
+        ? "not-reached"
+        : processingState;
 
   const stages = [
     {
@@ -600,7 +614,6 @@ function ControlJourney({
   const stateLabels = {
     pending: "Pending",
     ready: "Ready",
-    processing: "Processing",
     confirmed: "Confirmed",
     current: "Current",
     blocked: "Blocked",
@@ -663,22 +676,29 @@ function ControlJourney({
         </p>
       </div>
 
-      <ol className="control-layer-list">
-        {stages.map((stage, index) => (
-          <li className={`control-layer ${stage.state}`} key={stage.label}>
-            <span className="control-layer-index">{index + 1}</span>
-            <div>
-              <strong>{stage.label}</strong>
-              <small>{stage.detail}</small>
-            </div>
-            <span className="control-layer-state">
-              {stateLabels[stage.state]}
-            </span>
-          </li>
-        ))}
-      </ol>
+      {isProcessing ? (
+        <p className="control-journey-waiting" role="status">
+          Analysis in progress. Stage results are reported when the response
+          arrives.
+        </p>
+      ) : (
+        <ol className="control-layer-list">
+          {stages.map((stage, index) => (
+            <li className={`control-layer ${stage.state}`} key={stage.label}>
+              <span className="control-layer-index">{index + 1}</span>
+              <div>
+                <strong>{stage.label}</strong>
+                <small>{stage.detail}</small>
+              </div>
+              <span className="control-layer-state">
+                {stateLabels[stage.state]}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
 
-      {!!confirmedFacts.length && (
+      {!isProcessing && !!confirmedFacts.length && (
         <dl className="confirmed-control-facts">
           {confirmedFacts.map((fact) => (
             <div key={fact.label}>
@@ -781,15 +801,22 @@ function InputAdapter() {
       const uploadFile = new File([file], safeUploadName(file.name, extension), {
         type: mime,
       });
+      const preview = ["csv", "json"].includes(extension)
+        ? buildPhysicalLinePreview(await file.text())
+        : null;
       setPrepared({
         sourceName: file.name,
         sourceType: `LOCAL_${extension.toUpperCase()}_FILE`,
         sourceReference: file.name,
+        sourceSizeBytes: file.size,
         uploadFile,
         uploadName: uploadFile.name,
         converted: false,
         eventCount: null,
         content: null,
+        previewContent: preview?.previewContent ?? null,
+        nonEmptyPhysicalLineCount:
+          preview?.nonEmptyPhysicalLineCount ?? null,
       });
       setPhase("ready");
       setStatus({
@@ -1300,6 +1327,35 @@ function InputAdapter() {
             {prepared.content && (
               <pre>{prepared.content.split("\n").slice(0, 30).join("\n")}</pre>
             )}
+            {prepared.previewContent !== null &&
+              prepared.previewContent !== undefined && (
+                <section className="source-preview">
+                  <div className="source-preview-heading">
+                    <h3>Source preview — first 30 physical lines</h3>
+                    <span>
+                      {prepared.nonEmptyPhysicalLineCount} non-empty physical
+                      lines
+                    </span>
+                  </div>
+                  <pre>{prepared.previewContent}</pre>
+                  <p className="source-preview-note">
+                    Preview only; the original file is submitted unchanged.
+                    Event count is confirmed after normalisation.
+                  </p>
+                </section>
+              )}
+            {prepared.sourceType === "LOCAL_PDF_FILE" && (
+              <section className="pdf-preview-note">
+                <div>
+                  <strong>{prepared.sourceName}</strong>
+                  <span>{formatFileSize(prepared.sourceSizeBytes)}</span>
+                </div>
+                <p>
+                  PDF source preview is not available. The original file will
+                  be submitted unchanged.
+                </p>
+              </section>
+            )}
             <p className="public-chat-note">
               <strong>University demonstration access:</strong> this public
               prototype uses Flowise without user authentication. Do not submit
@@ -1318,8 +1374,8 @@ function InputAdapter() {
                   : "Controlled analysis request in progress"}
               </strong>
               <span>
-                SentinelFlow returns a completed response rather than a live
-                node-by-node trace. Keep this page open.
+                Please keep this tab in the foreground until analysis
+                completes. Switching away can interrupt the connection.
               </span>
             </div>
           </div>
