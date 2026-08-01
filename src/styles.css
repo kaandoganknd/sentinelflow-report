@@ -553,6 +553,14 @@ a {
   font-weight: 750;
 }
 
+.real-test-context {
+  max-width: 920px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .real-case-list {
   display: grid;
   margin-top: 13px;

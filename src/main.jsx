@@ -1626,7 +1626,7 @@ function InputAdapter() {
         <section className="real-test-cases">
           <div className="real-test-heading">
             <div>
-              <p className="eyebrow">ATTRIBUTED ACADEMIC TEST DATA</p>
+              <p className="eyebrow">Published academic test cases</p>
               <h2>Verified Loghub excerpts</h2>
             </div>
             <a
@@ -1635,6 +1635,11 @@ function InputAdapter() {
               Source, licence and preparation manifest
             </a>
           </div>
+          <p className="real-test-context">
+            Expected outcomes were recorded before testing. HUMAN_REVIEW is the
+            intended safety result when the evidence is insufficient for a
+            supported ALERT or NO_ALERT decision.
+          </p>
           <div className="real-case-list">
             {REAL_LOG_CASES.map((testCase) => (
               <article key={testCase.id}>
@@ -1646,7 +1651,7 @@ function InputAdapter() {
                   <small>{testCase.source}</small>
                 </div>
                 <span className="real-case-result">
-                  <small>Documented result</small>
+                  <small>EXPECTED → OBSERVED</small>
                   <strong>{testCase.documentedResult}</strong>
                 </span>
                 <button
